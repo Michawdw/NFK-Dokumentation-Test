@@ -264,6 +264,10 @@ fieldset.techs legend { font-weight: 700; padding: 0 6px; }
 .diary-arch-item {
   display: flex; align-items: center; gap: 10px; cursor: pointer;
   padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff;
+  /* Ohne min-width:0 wächst das Grid-Element auf die min-content-Breite seines Inhalts:
+     ein langer Vorschautext (.da-snip, white-space:nowrap) schob dann die ganze Seite
+     nach rechts und machte sie horizontal scrollbar. */
+  min-width: 0;
 }
 .diary-arch-item.active { border-color: var(--brand); background: #eaf2fb; }
 .da-main { flex: 1; min-width: 0; }

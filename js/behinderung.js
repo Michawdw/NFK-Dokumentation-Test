@@ -174,11 +174,17 @@ const Behinderung = (() => {
   }
 
   // Empfänger aus der zuletzt gespeicherten Anzeige übernehmen (spart Tipparbeit).
+  // „PLZ, Ort" fällt auf den Ort aus den Projekt-Stammdaten zurück – der stimmt bei
+  // der Bauleitung vor Ort in aller Regel und muss dann nicht getippt werden.
   function lastEmpfaenger(job) {
     const all = list(job || {});
     const last = all.length ? all[all.length - 1] : null;
     const e = (last && last.empfaenger) || {};
-    return { firma: e.firma || '', ansprechpartner: e.ansprechpartner || '', strasse: e.strasse || '', plzOrt: e.plzOrt || '' };
+    const ort = (job && job.header && job.header.ort) || '';
+    return {
+      firma: e.firma || '', ansprechpartner: e.ansprechpartner || '',
+      strasse: e.strasse || '', plzOrt: e.plzOrt || ort,
+    };
   }
 
   function defaultOrtDatum(job, datum) {

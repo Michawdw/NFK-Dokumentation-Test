@@ -5,6 +5,25 @@ const Photos = (() => {
   const MAX_EDGE = 1920;
   const QUALITY = 0.80;
 
+  // Aktuelle Browser (Chrome ab 81, Safari ab 13.1, Firefox ab 77) richten JPEGs beim
+  // Dekodieren bereits selbst nach EXIF aus. Die Drehung hier ein ZWEITES Mal anzuwenden
+  // legt Hochkantfotos quer – genau das passierte in Word-Protokoll und Bilder-ZIP.
+  // Erkennung mit einem 2x1-Pixel-JPEG, das per EXIF um 90° gedreht ist: richtet der
+  // Browser selbst aus, meldet er 1x2 statt 2x1. Ergebnis wird einmal je Sitzung gemerkt.
+  const PROBE_JPEG = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4QAiRXhpZgAATU0AKgAAAAgAAQESAAMAAAABAAYAAAAAAAD/2wBDAFA3PEY8MlBGQUZaVVBfeMiCeG5uePWvuZHI////////////////////////////////////////////////////2wBDAVVaWnhpeOuCguv/////////////////////////////////////////////////////////////////////////wAARCAABAAIDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwC7RRRQB//Z';
+  let autoOrientCheck = null;
+  function browserAutoOrients() {
+    if (!autoOrientCheck) {
+      autoOrientCheck = new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(img.naturalWidth === 1 && img.naturalHeight === 2);
+        img.onerror = () => resolve(false); // im Zweifel selbst drehen (altes Verhalten)
+        img.src = PROBE_JPEG;
+      });
+    }
+    return autoOrientCheck;
+  }
+
   // Liest EXIF-Orientation (1..8) aus einem JPEG-ArrayBuffer; 1 wenn nicht gefunden.
   function readOrientation(buffer) {
     const view = new DataView(buffer);
@@ -64,7 +83,8 @@ const Photos = (() => {
   // Komprimiert eine Bilddatei -> JPEG-Blob (ausgerichtet, max 2560px lange Kante).
   async function compress(file) {
     const buffer = await file.arrayBuffer();
-    const orientation = readOrientation(buffer);
+    // Hat der Browser die EXIF-Drehung schon selbst erledigt, ist hier nichts mehr zu tun.
+    const orientation = (await browserAutoOrients()) ? 1 : readOrientation(buffer);
     const img = await loadImage(file);
 
     let w = img.naturalWidth, h = img.naturalHeight;
@@ -136,5 +156,6 @@ const Photos = (() => {
     return `${node.bildname}_${nn}.jpg`;
   }
 
-  return { compress, addToNode, deleteFromNode, fileName, readOrientation, MAX_EDGE, QUALITY };
+  return { compress, addToNode, deleteFromNode, fileName, readOrientation,
+           browserAutoOrients, MAX_EDGE, QUALITY };
 })();
