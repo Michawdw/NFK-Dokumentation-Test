@@ -71,7 +71,11 @@ const App = (() => {
     $('#modalOk').textContent = 'Schließen';
     const overlay = $('#modalOverlay');
     overlay.hidden = false;
-    $('#modalOk').onclick = () => { overlay.hidden = true; };
+    const close = () => { overlay.hidden = true; };
+    $('#modalOk').onclick = close;
+    $('#modalClose').onclick = close;   // ✕ oben in der klebenden Kopfzeile
+    $('#modalBody').scrollTop = 0;
+    $('.modal', overlay).scrollTop = 0; // lange Inhalte immer oben starten
   }
 
   // Generisches Formular-Modal. fields: [{name,label,type,value,placeholder,required}]
@@ -93,6 +97,7 @@ const App = (() => {
     const overlay = $('#modalOverlay');
     overlay.hidden = false;
     $('#modalCancel').onclick = () => { overlay.hidden = true; };
+    $('#modalClose').onclick = () => { overlay.hidden = true; }; // ✕ = Abbrechen
     $('#modalOk').onclick = () => {
       const data = {};
       $$('#modalBody [name]').forEach((el) => { data[el.name] = el.value.trim(); });
@@ -120,6 +125,7 @@ const App = (() => {
         resolve(val);
       };
       cancel.onclick = () => finish(false);
+      $('#modalClose').onclick = () => finish(false); // ✕ = Abbrechen (Promise auflösen!)
       ok.onclick = () => finish(true);
       overlay.onclick = (e) => { if (e.target === overlay) finish(false); }; // Tippen daneben = Abbrechen
     });
@@ -298,7 +304,9 @@ const App = (() => {
     const job = currentJob;
     if (!job) { el.hidden = true; return; }
 
-    const photos = await DB.getAllPhotos(job.id);
+    // Nur Bilddoku-Bilder: Fotos aus Vorprüfung und Baubehinderungsanzeige stecken nicht
+    // im ZIP-Export, dürfen die Sicherungswarnung also weder auslösen noch hochzählen.
+    const photos = await DB.getBilddokuPhotos(job.id);
     if (!photos.length) { el.hidden = true; return; } // nichts zu verlieren
 
     const last = job.lastBackupAt || 0;
@@ -929,7 +937,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v28'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v31'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;

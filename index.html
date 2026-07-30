@@ -247,7 +247,12 @@
   <!-- ===================== MODAL (generisch) ===================== -->
   <div id="modalOverlay" class="modal-overlay" hidden>
     <div class="modal" role="dialog" aria-modal="true">
-      <h3 id="modalTitle"></h3>
+      <!-- Kopfzeile bleibt beim Scrollen stehen, damit lange Inhalte (z. B. die Übersicht)
+           nicht bis ans Ende gescrollt werden müssen, um schließen zu können. -->
+      <div class="modal-head">
+        <h3 id="modalTitle"></h3>
+        <button type="button" id="modalClose" class="modal-x" aria-label="Schließen">✕</button>
+      </div>
       <div id="modalBody"></div>
       <div class="modal-actions">
         <button id="modalCancel" class="btn ghost">Abbrechen</button>

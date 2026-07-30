@@ -6,8 +6,25 @@
    Vorhandene Bilder werden NIE umbenannt oder überschrieben (append-only). */
 const Merge = (() => {
 
+  // Nachschlagetabelle „so schreibt der Export diese Position" -> echter Knoten.
+  // Nötig, weil der Export den Pfad zweifach verändert: Ordner-/Dateinamen werden über
+  // safePart() bereinigt (aus „Allgemein / CCTV" wird „Allgemein _ CCTV"), und dem
+  // Bildnamen wird die Filialnummer vorangestellt („7265_Kassen Totale_01.jpg").
+  // Ohne diese Rückabbildung entstünde beim Fallback-Import eine zweite Position neben
+  // der echten – doppelter Eintrag in der Übersicht, Nummerierung wieder ab 01.
+  function buildExportPathIndex(knownNodes) {
+    const sp = ExportZip.safePart;
+    const idx = new Map();
+    for (const n of knownNodes || []) {
+      const folder = [sp(n.ober)].concat(n.unter ? [sp(n.unter)] : []).join('/');
+      idx.set(folder + '/' + sp(n.bildname), n);
+    }
+    return idx;
+  }
+
   // Liest die Foto-Liste aus manifest.json; fällt sonst auf die Ordnerstruktur zurück.
-  async function readEntries(zip) {
+  // knownNodes wird nur im Fallback gebraucht (Rückabbildung des Exportpfads).
+  async function readEntries(zip, knownNodes) {
     const mf = zip.file('manifest.json');
     if (mf) {
       try {
@@ -16,21 +33,43 @@ const Merge = (() => {
       } catch (e) { console.warn('manifest.json unlesbar, nutze Ordner-Fallback', e); }
     }
     // Fallback: aus Pfaden Ober/[Unter/]<Bildname>_NN.jpg ableiten (für alte ZIPs).
+    const idx = buildExportPathIndex(knownNodes);
     const entries = [];
     zip.forEach((path, file) => {
       if (file.dir) return;
       if (!/\.jpe?g$/i.test(path)) return;
+      // Fotos der Baubehinderungsanzeigen liegen in einem eigenen Ordner und sind KEINE
+      // Bilddoku-Position – sie würden hier sonst als eigener Name angelegt und tauchten
+      // damit in der Übersicht auf.
+      if (/^Baubehinderung\//i.test(path)) return;
       const parts = path.split('/');
       const fname = parts.pop();
+      const dir = parts.join('/');
+      const m = fname.match(/^(.*)_(\d+)\.jpe?g$/i);
+      const roh = m ? m[1] : fname.replace(/\.jpe?g$/i, '');
+      const seq = m ? parseInt(m[2], 10) : 0;
+
+      // Erst mit, dann ohne Filialpräfix nachschlagen. Nur bei einem Treffer wird der
+      // echte Knoten übernommen – ein Bildname, der wirklich mit Ziffern beginnt, bleibt
+      // dadurch unangetastet.
+      const node = idx.get(dir + '/' + roh) || idx.get(dir + '/' + roh.replace(/^\d+_/, ''));
+      if (node) {
+        entries.push({
+          srcId: 'legacy:' + path,
+          nodeKey: node.key,
+          ober: node.ober, unter: node.unter || null, bildname: node.bildname,
+          pflicht: node.pflicht || 1, seq, createdAt: null, path,
+        });
+        return;
+      }
+
+      // Kein Treffer: wie bisher aus dem Pfad ableiten und als eigenen Namen anlegen.
       const ober = parts[0] || 'Allgemein';
       const unter = parts.length > 1 ? parts[1] : null;
-      const m = fname.match(/^(.*)_(\d+)\.jpe?g$/i);
-      const bildname = m ? m[1] : fname.replace(/\.jpe?g$/i, '');
-      const seq = m ? parseInt(m[2], 10) : 0;
       entries.push({
         srcId: 'legacy:' + path, // stabil pro ZIP-Pfad -> Re-Import dedupt
-        nodeKey: Structure.makeKey(ober, unter, bildname),
-        ober, unter, bildname, pflicht: 1, seq, createdAt: null, path,
+        nodeKey: Structure.makeKey(ober, unter, roh),
+        ober, unter, bildname: roh, pflicht: 1, seq, createdAt: null, path,
       });
     });
     return entries;
@@ -41,11 +80,14 @@ const Merge = (() => {
     if (!job) throw new Error('Kein Auftrag aktiv.');
 
     const zip = await JSZip.loadAsync(await file.arrayBuffer());
-    const entries = await readEntries(zip);
+    // Bekannte Positionen vor dem Einlesen bestimmen – der Ordner-Fallback braucht sie,
+    // um den Exportpfad wieder auf die echte Position zurückzuführen.
+    const knownNodes = Structure.getMerged();
+    const knownKeys = new Set(knownNodes.map((n) => n.key));
+    const entries = await readEntries(zip, knownNodes);
     if (!entries.length) throw new Error('ZIP enthält keine Bilder.');
 
     const existingSrc = await DB.getPhotoSrcIds(job.id);
-    const knownKeys = new Set(Structure.getMerged().map((n) => n.key));
     if (!job.customNames) job.customNames = [];
 
     // Sortierung: nach Position, dann Aufnahmezeit/seq, damit die Reihenfolge stimmt.

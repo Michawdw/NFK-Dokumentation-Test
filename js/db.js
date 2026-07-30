@@ -205,6 +205,17 @@ const DB = (() => {
     const s = await store('photos', 'readonly');
     return reqP(s.index('byJob').getAll(IDBKeyRange.only(jobId)));
   }
+  // Gehört das Bild zur Bilddokumentation? Vorprüfung ('__vorpruefung__<pid>') und
+  // Baubehinderungsanzeige ('__behinderung__<id>') legen ihre Fotos unter reservierten
+  // nodeKeys mit führendem '__' ab. Sie sind KEIN Teil des Bilddoku-ZIP und dürfen
+  // deshalb auch nicht in Zählungen einfließen, die sich auf die Sicherung beziehen.
+  function isBilddokuPhoto(rec) {
+    return !(rec && typeof rec.nodeKey === 'string' && rec.nodeKey.indexOf('__') === 0);
+  }
+  // Nur die Bilder der Bilddokumentation eines Auftrags.
+  async function getBilddokuPhotos(jobId) {
+    return (await getAllPhotos(jobId)).filter(isBilddokuPhoto);
+  }
   async function addPhoto(rec) {
     // rec: { jobId, nodeKey, seq, blob, createdAt, srcId }. Neue Bilder werden angehängt.
     return reqP((await store('photos', 'readwrite')).add(rec));
@@ -265,7 +276,8 @@ const DB = (() => {
     getMeta, setMeta, getDeviceId,
     listJobs, getJob, saveJob, createJob, deleteJob, newJob,
     getCurrentJobId, setCurrentJobId,
-    countPhotos, getPhotos, getAllPhotos, addPhoto, deletePhotoById, renumberNode, updatePhoto, getPhotoSrcIds,
+    countPhotos, getPhotos, getAllPhotos, getBilddokuPhotos, isBilddokuPhoto,
+    addPhoto, deletePhotoById, renumberNode, updatePhoto, getPhotoSrcIds,
     getDiary, saveDiary, listDiary, deleteDiary,
   };
 })();
