@@ -411,6 +411,12 @@ fieldset.techs legend { font-weight: 700; padding: 0 6px; }
 
 /* Pflichtfeld-Markierung im Formular (analog .vp-item.missing in der Vorprüfung). */
 .req { color: var(--warn); font-weight: 700; }
+/* Fehlende Pflicht-Bilddoku: der ganze Block wird markiert, nicht ein einzelnes Feld. */
+.bh-photoblock { border-radius: 12px; padding: 2px 8px; margin: 0 -8px; }
+.bh-photoblock.missing {
+  border: 1px solid var(--warn); box-shadow: 0 0 0 2px rgba(192,57,43,.18);
+  background: #fdecea;
+}
 .form label.missing > textarea,
 .form label.missing > input {
   border-color: var(--warn); box-shadow: 0 0 0 2px rgba(192,57,43,.18);

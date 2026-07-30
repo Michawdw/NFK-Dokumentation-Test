@@ -243,10 +243,13 @@ const Behinderung = (() => {
 
   function clearMissing() {
     $$('#bhForm label.missing').forEach((l) => l.classList.remove('missing'));
+    const fotos = $('#bhPhotoBlock');
+    if (fotos) fotos.classList.remove('missing');
   }
 
   // Markiert leere Pflichtfelder rot und springt zum ersten davon.
-  function flagMissing(model) {
+  // fotoAnzahl: Anzahl der angehängten Bilder – mindestens eines ist Pflicht.
+  function flagMissing(model, fotoAnzahl) {
     clearMissing();
     const f = $('#bhForm');
     let first = null;
@@ -258,8 +261,22 @@ const Behinderung = (() => {
         if (!first) first = label;
       }
     }
+    if (fotoAnzahl === 0) {
+      const block = $('#bhPhotoBlock');
+      if (block) {
+        block.classList.add('missing');
+        if (!first) first = block;
+      }
+    }
     if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return !first;
+  }
+
+  // Anzahl der Fotos der gerade bearbeiteten Anzeige.
+  async function fotoAnzahl() {
+    const job = App.getCurrentJob();
+    if (!job || !current) return 0;
+    return DB.countPhotos(job.id, nodeKeyFor(current.id));
   }
 
   // Schreibt den Formularstand in job.behinderungen (Upsert über die id).
@@ -357,8 +374,11 @@ const Behinderung = (() => {
     activeUrls = [];
     const photos = await DB.getPhotos(job.id, nodeKeyFor(current.id));
     cont.innerHTML = '';
+    // Sobald ein Bild da ist, die Pflichtfeld-Markierung wieder aufheben.
+    const block = $('#bhPhotoBlock');
+    if (block && photos.length) block.classList.remove('missing');
     if (!photos.length) {
-      cont.innerHTML = '<p class="hint">Keine Bilder angehängt.</p>';
+      cont.innerHTML = '<p class="hint">Noch kein Bild angehängt – mindestens eines ist erforderlich.</p>';
       return;
     }
     for (const ph of photos) {
@@ -511,20 +531,31 @@ const Behinderung = (() => {
   async function exportDoc() {
     const job = App.getCurrentJob();
     if (!job || !current) return;
-    if (!flagMissing(gather())) {
-      App.toast('Bitte Grund, betroffene Leistungen und Dauer ausfüllen.');
+    // Mindestens ein Foto ist Pflicht – eine Behinderung ohne Bild ist im Streitfall
+    // kaum belastbar. Das Speichern eines Entwurfs bleibt davon unberührt.
+    const bilder = await fotoAnzahl();
+    const model = gather();
+    if (!flagMissing(model, bilder)) {
+      // Nur das benennen, was wirklich fehlt – sonst sucht der Techniker am falschen Ende.
+      const texteFehlen = REQUIRED.some((n) => !(model[n] || '').trim());
+      App.toast(
+        texteFehlen && bilder === 0
+          ? 'Bitte alle Pflichtfelder ausfüllen und mindestens ein Foto anhängen.'
+          : bilder === 0
+            ? 'Bitte mindestens ein Foto anhängen.'
+            : 'Bitte Grund, betroffene Leistungen und Dauer ausfüllen.');
       return;
     }
-    const model = await buildExportModel();
-    if (!model) return;
-    if (!absenderComplete(model.absender)) {
+    const exportModel = await buildExportModel();
+    if (!exportModel) return;
+    if (!absenderComplete(exportModel.absender)) {
       App.toast('Bitte zuerst die Absenderdaten hinterlegen (🏢).');
       await renderSenderBanner();
       return;
     }
     App.toast('Erzeuge Behinderungsanzeige…');
     try {
-      const name = await exportFile(model);
+      const name = await exportFile(exportModel);
       App.toast('Behinderungsanzeige erstellt: ' + name);
     } catch (err) {
       console.error(err);
