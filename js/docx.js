@@ -49,7 +49,9 @@ const Docx = (() => {
   }
 
   // Pixelmaße -> EMU. widthEmu erzwingt eine feste Breite (z. B. Logo),
-  // sonst wird nur auf maxWidthEmu heruntergerechnet. Seitenverhältnis bleibt erhalten.
+  // sonst wird nur auf maxWidthEmu heruntergerechnet; optional zusätzlich auf
+  // maxHeightEmu begrenzt (z. B. damit Hochkantfotos nicht fast eine ganze Seite
+  // füllen). Seitenverhältnis bleibt in jedem Fall erhalten.
   function emuSize(px, opts) {
     const o = opts || {};
     const w = Math.max(1, px.w), h = Math.max(1, px.h);
@@ -58,8 +60,9 @@ const Docx = (() => {
     }
     let cx = w * EMU_PER_PX;
     let cy = h * EMU_PER_PX;
-    const max = o.maxWidthEmu || MAX_W_EMU;
-    if (cx > max) { cy = Math.round(cy * max / cx); cx = max; }
+    const maxW = o.maxWidthEmu || MAX_W_EMU;
+    if (cx > maxW) { cy = cy * maxW / cx; cx = maxW; }
+    if (o.maxHeightEmu && cy > o.maxHeightEmu) { cx = cx * o.maxHeightEmu / cy; cy = o.maxHeightEmu; }
     return { cx: Math.round(cx), cy: Math.round(cy) };
   }
 
@@ -195,7 +198,7 @@ const Docx = (() => {
 
       // Bild registrieren und den fertigen Bildabsatz als XML zurückgeben (ohne ihn
       // anzuhängen) – nötig, damit Bilder auch in Tabellenzellen landen können.
-      // opts: { ext:'jpeg'|'png', widthEmu, maxWidthEmu, align }
+      // opts: { ext:'jpeg'|'png', widthEmu, maxWidthEmu, maxHeightEmu, align }
       async imageXml(blob, opts) {
         const o = opts || {};
         const ext = o.ext || 'jpeg';

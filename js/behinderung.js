@@ -157,13 +157,15 @@ const Behinderung = (() => {
 
   // ---- Formular ----
   function blankEntry(job) {
-    const h = (job && job.header) || {};
     const d = today();
     return {
       id: 'bh_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
       datum: d,
       behindertSeit: d,
-      gewerk: h.beauftragung || 'NFK Vollverkabelung',
+      // Feste Vorbelegung (nicht aus job.header.beauftragung): die Stammdaten-
+      // „Beauftragung" ist projektweit meist „NFK Vollverkabelung" und beträfe damit
+      // praktisch nie die tatsächliche Firma – „Gewerk" bleibt trotzdem änderbar.
+      gewerk: 'WdW Retail e.K.',
       bestellnummer: '',
       empfaenger: lastEmpfaenger(job),
       grund: '', betroffeneLeistungen: '', dauer: '',
@@ -440,8 +442,12 @@ const Behinderung = (() => {
         Docx.pTitle('Anlage: Bilddokumentation'),
         Docx.pEmpty()
       );
+      // Bildhöhe zusätzlich zur Breite begrenzt – sonst füllt ein Hochkantfoto (bei
+      // 15 cm Breite ~20 cm hoch) fast eine ganze Seite. Mit 12 cm passen i. d. R.
+      // zwei Fotos samt Bildunterschrift auf eine Seite.
+      const PHOTO_MAX_H = 12 * Docx.EMU_PER_CM;
       for (const ph of photos) {
-        await doc.image(ph.blob, { ext: 'jpeg', caption: ph.caption });
+        await doc.image(ph.blob, { ext: 'jpeg', caption: ph.caption, maxHeightEmu: PHOTO_MAX_H });
       }
     }
 
