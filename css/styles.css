@@ -407,6 +407,7 @@ fieldset.techs legend { font-weight: 700; padding: 0 6px; }
 .bh-addr legend { padding: 0 6px; font-weight: 700; font-size: 14px; color: var(--brand); }
 .bh-addr label { margin-bottom: 8px; }
 .bh-addr label:last-child { margin-bottom: 0; }
+.bh-addr-hint { margin: 0 0 10px; }
 
 /* Pflichtfeld-Markierung im Formular (analog .vp-item.missing in der Vorprüfung). */
 .req { color: var(--warn); font-weight: 700; }

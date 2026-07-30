@@ -176,16 +176,17 @@ const Behinderung = (() => {
   }
 
   // Empfänger aus der zuletzt gespeicherten Anzeige übernehmen (spart Tipparbeit).
-  // „PLZ, Ort" fällt auf den Ort aus den Projekt-Stammdaten zurück – der stimmt bei
-  // der Bauleitung vor Ort in aller Regel und muss dann nicht getippt werden.
+  // Bewusst KEIN Rückgriff auf den Ort aus den Stammdaten: Empfänger ist das
+  // Generalunternehmen, dessen Anschrift meist eine andere ist als die der Baustelle.
+  // Eine geratene Vorbelegung stünde sonst als halbe Anschrift im Schreiben – und
+  // leere Felder sollen gerade weggelassen werden.
   function lastEmpfaenger(job) {
     const all = list(job || {});
     const last = all.length ? all[all.length - 1] : null;
     const e = (last && last.empfaenger) || {};
-    const ort = (job && job.header && job.header.ort) || '';
     return {
       firma: e.firma || '', ansprechpartner: e.ansprechpartner || '',
-      strasse: e.strasse || '', plzOrt: e.plzOrt || ort,
+      strasse: e.strasse || '', plzOrt: e.plzOrt || '',
     };
   }
 
@@ -404,13 +405,16 @@ const Behinderung = (() => {
     ]);
     doc.push(Docx.pEmpty());
 
-    // Anschriftenfeld des Empfängers.
+    // Anschriftenfeld des Empfängers. Jede Zeile ist optional – die Anschrift des
+    // Generalunternehmens ist oft nicht bekannt. Nicht ausgefüllte Felder werden
+    // weggelassen (keine Leerzeilen, kein Platzhalter im Schreiben); ist der ganze
+    // Block leer, entfällt auch der Abstand darunter.
+    const empfZeilen = [e.firma, e.ansprechpartner, e.strasse, e.plzOrt]
+      .filter((z) => z && String(z).trim())
+      .map((z) => Docx.pTight(z));
     doc.push(
-      e.firma ? Docx.pTight(e.firma) : null,
-      e.ansprechpartner ? Docx.pTight(e.ansprechpartner) : null,
-      e.strasse ? Docx.pTight(e.strasse) : null,
-      e.plzOrt ? Docx.pTight(e.plzOrt) : null,
-      Docx.pEmpty(),
+      empfZeilen,
+      empfZeilen.length ? Docx.pEmpty() : null,
       Docx.pRight(model.ortDatum || defaultOrtDatumFor(model)),
       Docx.pEmpty(),
       Docx.pBold(TXT_BETREFF),

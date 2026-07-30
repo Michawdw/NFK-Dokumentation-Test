@@ -69,6 +69,13 @@ const ExportZip = (() => {
       }
     }
 
+    // --- Verwaiste Bilddoku-Bilder ---
+    // Bilder, deren Position in der aktuellen Struktur nicht mehr existiert (z. B. nach
+    // einem Vorlagenwechsel). Ohne Sonderbehandlung fielen sie stillschweigend aus dem
+    // Export: die Backup-Erinnerung zählte sie, der Export ignorierte sie – „Jetzt sichern"
+    // meldete dann „Noch keine Bilder aufgenommen" und die Warnung ließ sich nie ausräumen.
+    totalPhotos += await addOrphanPhotos(zip, job, enriched, filPrefix, manifest, lines);
+
     const bilddokuPhotos = totalPhotos;
 
     // --- Bilder der Baubehinderungsanzeigen ---
@@ -93,6 +100,50 @@ const ExportZip = (() => {
     await App.shareFile(blob, fname, 'application/zip',
       `Bilddoku ${project.filiale || ''}`.trim());
     return { totalPhotos, bilddokuPhotos, behinderungPhotos, fname };
+  }
+
+  // Legt Bilddoku-Bilder ab, deren Position es in der aktuellen Struktur nicht mehr gibt,
+  // im Ordner „Ohne Zuordnung/<Ober>/[<Unter>/]". Sie bleiben damit gesichert und
+  // wandern beim Zusammenführen über manifest.photos wieder an ihre ursprüngliche
+  // Position zurück. Liefert die Anzahl der abgelegten Bilder.
+  async function addOrphanPhotos(zip, job, enriched, filPrefix, manifest, lines) {
+    const bekannt = new Set(enriched.map((n) => n.key));
+    const byNode = new Map();
+    for (const p of await DB.getAllPhotos(job.id)) {
+      if (!DB.isBilddokuPhoto(p)) continue;   // Vorprüfung/Behinderung: eigene Wege
+      if (bekannt.has(p.nodeKey)) continue;   // regulär bereits exportiert
+      if (!byNode.has(p.nodeKey)) byNode.set(p.nodeKey, []);
+      byNode.get(p.nodeKey).push(p);
+    }
+    if (!byNode.size) return 0;
+
+    let count = 0;
+    for (const [key, photos] of byNode) {
+      const teile = String(key).split(Structure.SEP);
+      const ober = teile[0] || 'Allgemein';
+      const unter = teile[1] || '';
+      const bildname = teile[2] || key;
+      const parts = ['Ohne Zuordnung', safePart(ober)];
+      if (unter) parts.push(safePart(unter));
+      const folder = parts.join('/');
+      photos.sort((a, b) => (a.seq || 0) - (b.seq || 0));
+
+      lines.push([ober, unter, bildname, '', photos.length, 'nicht mehr in Vorlage']
+        .map(csvCell).join(';'));
+
+      for (const p of photos) {
+        const fname = `${filPrefix}${safePart(bildname)}_${String(p.seq).padStart(2, '0')}.jpg`;
+        const path = `${folder}/${fname}`;
+        zip.file(path, p.blob);
+        manifest.photos.push({
+          srcId: p.srcId || null, nodeKey: key,
+          ober, unter: unter || null, bildname, pflicht: 1, benoetigt: true, verwaist: true,
+          seq: p.seq, createdAt: p.createdAt || null, path,
+        });
+        count++;
+      }
+    }
+    return count;
   }
 
   // Legt die Fotos aller Baubehinderungsanzeigen im Ordner „Baubehinderung/<Datum>" ab.
