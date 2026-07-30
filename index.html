@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1f4e78" />
+  <title>Auftragsdoku FlexPos NFK</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="assets/icon-192.png" />
+  <link rel="apple-touch-icon" href="assets/icon-192.png" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <button id="backBtn" class="icon-btn" hidden aria-label="Zurück">‹</button>
+    <h1 id="topTitle">NFK Doku</h1>
+    <span id="netDot" class="net-dot" title="Offline-Status"></span>
+  </header>
+
+  <main id="main">
+
+    <!-- ===================== START / PROJEKTKOPF ===================== -->
+    <section id="view-start" class="view active">
+      <div class="jobs-head">
+        <h2>Aufträge</h2>
+        <button type="button" id="newJobBtn" class="btn ghost">+ Neuer Auftrag</button>
+      </div>
+      <div id="jobList" class="job-list"></div>
+
+      <div id="backupReminderStart" class="backup-banner" hidden></div>
+
+      <h2>Projekt-Stammdaten <span class="sub-current" id="currentJobHint"></span></h2>
+      <p class="hint">Gilt für den aktuell gewählten Auftrag (Bilddoku und Bautagebuch).</p>
+      <form id="projectForm" class="form">
+        <label>Bauvorhaben / Filiale
+          <input name="filiale" placeholder="7265 Memmingen" autocomplete="off" required />
+        </label>
+        <label>Ort
+          <input name="ort" placeholder="Memmingen" autocomplete="off" required />
+        </label>
+        <label>Datum
+          <input name="datum" type="date" required />
+        </label>
+        <label>Beauftragung
+          <input name="beauftragung" value="NFK Vollverkabelung" autocomplete="off" />
+        </label>
+        <button type="submit" class="btn primary">Speichern</button>
+        <span id="projectSaved" class="saved" hidden>✓ gespeichert</span>
+      </form>
+
+      <div id="vpStatus" class="vp-status" hidden></div>
+
+      <h2>Funktion wählen</h2>
+      <div class="bigchoice">
+        <button class="bigbtn" data-go="view-bilddoku">
+          <span class="bigbtn-emoji">📷</span>
+          <span class="bigbtn-title">Bilddokumentation</span>
+          <span class="bigbtn-sub">Fotos pro Bereich/Name, ZIP-Export</span>
+        </button>
+        <button class="bigbtn" data-go="view-bautagebuch">
+          <span class="bigbtn-emoji">📋</span>
+          <span class="bigbtn-title">Bautagebuch</span>
+          <span class="bigbtn-sub">Täglich als Excel exportieren</span>
+        </button>
+        <button class="bigbtn" data-go="view-behinderung">
+          <span class="bigbtn-emoji">⚠️</span>
+          <span class="bigbtn-title">Baubehinderungsanzeige</span>
+          <span class="bigbtn-sub">Word-Anzeige nach VOB/B mit Fotos</span>
+        </button>
+      </div>
+
+      <div id="appVersion" class="app-version" title="Installierte App-Version dieses Geräts"></div>
+    </section>
+
+    <!-- ===================== BILDDOKUMENTATION ===================== -->
+    <section id="view-bilddoku" class="view">
+      <div class="toolrow tpl-row">
+        <label class="tpl-label" for="templateSelect">Vorlage</label>
+        <select id="templateSelect" class="tpl-select" aria-label="Vorlage auswählen"></select>
+        <button id="tplRefreshBtn" class="btn ghost icon-only" title="Vorlagen aktualisieren">↻</button>
+      </div>
+      <div class="toolrow">
+        <label class="btn ghost filelabel">
+          📥 Eigene Excel…
+          <input id="importTemplate" type="file" accept=".xlsx" hidden />
+        </label>
+        <button id="overviewBtn" class="btn ghost">📊 Übersicht</button>
+        <button id="exportZipBtn" class="btn primary">📦 ZIP-Export</button>
+      </div>
+      <div id="backupReminder" class="backup-banner" hidden></div>
+      <div class="toolrow">
+        <button id="handoverExportBtn" class="btn ghost">📤 Übergabe export (.xlsx)</button>
+        <label class="btn ghost filelabel">
+          📥 Übergabe import
+          <input id="handoverImport" type="file" accept=".xlsx" hidden />
+        </label>
+      </div>
+      <div class="toolrow">
+        <label class="btn ghost filelabel wide">
+          🔗 Beiträge zusammenführen (Bilder-ZIP)
+          <input id="mergeImport" type="file" accept=".zip" hidden />
+        </label>
+      </div>
+      <p id="templateInfo" class="hint"></p>
+
+      <div id="structureTree" class="tree"></div>
+
+      <button id="addCustomBtn" class="btn ghost wide">+ Eigenen Bereich / Namen anlegen</button>
+    </section>
+
+    <!-- ===================== VORPRÜFUNG (Pflicht vor Arbeitsbeginn) ===================== -->
+    <section id="view-vorpruefung" class="view">
+      <div id="vpIntro" class="vp-intro"></div>
+      <div id="vpList" class="vp-list"></div>
+      <div class="toolrow vp-footer">
+        <button type="button" id="vpCompleteBtn" class="btn primary">✓ Vorprüfung abschließen</button>
+        <button type="button" id="vpProtokollBtn" class="btn ghost">📄 Word-Protokoll erstellen</button>
+      </div>
+      <p id="vpDoneNote" class="hint" hidden>✓ Vorprüfung abgeschlossen. Du kannst das Protokoll erneut erstellen und versenden.</p>
+    </section>
+
+    <!-- ===================== BAUTAGEBUCH ===================== -->
+    <section id="view-bautagebuch" class="view">
+      <h3 class="arch-head">Gespeicherte Bautagebücher</h3>
+      <div id="diaryArchive" class="diary-archive"></div>
+
+      <form id="diaryForm" class="form">
+        <div class="grid2">
+          <label>Datum
+            <input name="datum" type="date" required />
+          </label>
+          <label>Anz. Techniker
+            <input name="anzTechniker" type="number" min="0" step="1" inputmode="numeric" />
+          </label>
+        </div>
+
+        <h3>Arbeitszeiten (max. 5)</h3>
+        <div id="diaryRows" class="diary-rows"></div>
+
+        <label>Beschreibung der Tätigkeiten
+          <textarea name="taetigkeiten" rows="6"></textarea>
+        </label>
+        <label>Behinderungen
+          <textarea name="behinderungen" rows="3"></textarea>
+        </label>
+        <label>Besondere Vorkommnisse
+          <textarea name="vorkommnisse" rows="3"></textarea>
+        </label>
+        <label>Fußzeile „Ort Datum"
+          <input name="ortDatum" placeholder="Memmingen 11.09.2025" autocomplete="off" />
+        </label>
+
+        <div class="toolrow">
+          <button type="button" id="diarySaveBtn" class="btn ghost">💾 Tag speichern</button>
+          <button type="button" id="diaryExportBtn" class="btn primary">📄 Excel exportieren</button>
+        </div>
+        <span id="diarySaved" class="saved" hidden>✓ gespeichert</span>
+      </form>
+    </section>
+
+    <!-- ===================== BAUBEHINDERUNGSANZEIGE ===================== -->
+    <section id="view-behinderung" class="view">
+      <h3 class="arch-head">Gespeicherte Behinderungsanzeigen</h3>
+      <div id="bhArchive" class="diary-archive"></div>
+
+      <div id="bhSenderBanner" class="backup-banner" hidden></div>
+      <div class="toolrow">
+        <button type="button" id="bhSenderBtn" class="btn ghost">🏢 Absenderdaten</button>
+        <button type="button" id="bhNewBtn" class="btn ghost">+ Neue Anzeige</button>
+      </div>
+
+      <form id="bhForm" class="form">
+        <fieldset class="bh-addr">
+          <legend>Empfänger (Auftraggeber / Bauleitung)</legend>
+          <label>Firma
+            <input name="empfFirma" placeholder="Muster Bau GmbH" autocomplete="off" />
+          </label>
+          <label>Ansprechpartner / Bauleitung
+            <input name="empfAnsprech" placeholder="Herr/Frau …" autocomplete="off" />
+          </label>
+          <label>Straße, Hausnummer
+            <input name="empfStrasse" autocomplete="off" />
+          </label>
+          <label>PLZ, Ort
+            <input name="empfPlzOrt" autocomplete="off" />
+          </label>
+        </fieldset>
+
+        <div class="grid2">
+          <label>Datum der Anzeige
+            <input name="datum" type="date" />
+          </label>
+          <label>Behinderung besteht seit
+            <input name="behindertSeit" type="date" />
+          </label>
+        </div>
+        <div class="grid2">
+          <label>Gewerk
+            <input name="gewerk" placeholder="NFK Vollverkabelung" autocomplete="off" />
+          </label>
+          <label>Auftrags-/Bestellnummer
+            <input name="bestellnummer" autocomplete="off" />
+          </label>
+        </div>
+
+        <label>Grund der Behinderung <span class="req">*</span>
+          <textarea name="grund" rows="4"
+            placeholder="z. B. Die für unsere Arbeiten erforderliche Vorleistung ist bislang nicht fertiggestellt."></textarea>
+        </label>
+        <label>Betroffene Leistungen / Arbeiten, die nicht ausgeführt werden können <span class="req">*</span>
+          <textarea name="betroffeneLeistungen" rows="4"
+            placeholder="Welche Arbeiten/Gewerke konkret nicht ausgeführt werden können"></textarea>
+        </label>
+        <label>Voraussichtliche Dauer der Behinderung <span class="req">*</span>
+          <textarea name="dauer" rows="2"
+            placeholder="z. B. derzeit nicht abschließend bezifferbar oder ca. 2 Wochen"></textarea>
+        </label>
+
+        <h3>Bilddokumentation</h3>
+        <div id="bhPhotos" class="vp-photos"></div>
+        <div class="toolrow">
+          <button type="button" id="bhCamBtn" class="btn ghost">📷 Foto</button>
+          <button type="button" id="bhGalBtn" class="btn ghost">🖼 Galerie</button>
+        </div>
+
+        <div class="grid2">
+          <label>Unterzeichner – Name
+            <input name="untName" autocomplete="off" />
+          </label>
+          <label>Funktion / Firma
+            <input name="untFunktion" autocomplete="off" />
+          </label>
+        </div>
+        <label>Zeile „Ort, den Datum"
+          <input name="ortDatum" placeholder="Memmingen, den 29.07.2026" autocomplete="off" />
+        </label>
+
+        <div class="toolrow">
+          <button type="button" id="bhSaveBtn" class="btn ghost">💾 Speichern</button>
+          <button type="button" id="bhExportBtn" class="btn primary">📄 Word erstellen</button>
+        </div>
+        <span id="bhSaved" class="saved" hidden>✓ gespeichert</span>
+      </form>
+    </section>
+  </main>
+
+  <!-- ===================== MODAL (generisch) ===================== -->
+  <div id="modalOverlay" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true">
+      <h3 id="modalTitle"></h3>
+      <div id="modalBody"></div>
+      <div class="modal-actions">
+        <button id="modalCancel" class="btn ghost">Abbrechen</button>
+        <button id="modalOk" class="btn primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== BILD-GROSSANSICHT ===================== -->
+  <div id="photoOverlay" class="photo-overlay" hidden>
+    <div class="photo-box" role="dialog" aria-modal="true">
+      <div class="photo-head">
+        <div id="photoTitle" class="photo-title"></div>
+        <div id="photoSub" class="photo-sub"></div>
+      </div>
+      <img id="photoImg" alt="" />
+      <div class="modal-actions">
+        <button id="photoClose" class="btn ghost">Schließen</button>
+        <button id="photoDelete" class="btn danger">🗑 Bild löschen</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- Libs (lokal vendored, offline-fähig).
+       ExcelJS wird NICHT hier geladen, sondern erst bei Bedarf (Template-Import) –
+       sonst überlastet die ~950 KB große Datei den Kaltstart auf alten Geräten. -->
+  <script src="lib/jszip.min.js"></script>
+  <!-- App-Module -->
+  <script src="js/db.js"></script>
+  <script src="js/template.js"></script>
+  <script src="js/photos.js"></script>
+  <script src="js/overview.js"></script>
+  <script src="js/export-zip.js"></script>
+  <script src="js/bautagebuch.js"></script>
+  <script src="js/handover.js"></script>
+  <script src="js/merge.js"></script>
+  <script src="js/docx.js"></script>
+  <script src="js/protokoll.js"></script>
+  <script src="js/behinderung.js"></script>
+  <script src="js/vorpruefung.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
