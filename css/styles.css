@@ -225,6 +225,37 @@ fieldset.techs legend { font-weight: 700; padding: 0 6px; }
   font-weight: 700; font-size: 11px; padding: 1px 7px; border-radius: 999px;
   margin-left: 6px; vertical-align: middle;
 }
+/* ---------- Herkunft: eigene / zusammengeführte Positionen ---------- */
+/* Abzeichen wie .prior-tag, aber in eigenen Farben: orange = selbst angelegt,
+   violett = über „Beiträge zusammenführen" von einem Kollegen übernommen. */
+.origin-tag {
+  display: inline-block; font-weight: 700; font-size: 11px;
+  padding: 1px 7px; border-radius: 999px; margin-left: 6px; vertical-align: middle;
+  white-space: nowrap;
+}
+.origin-tag.custom { background: #fff1e0; color: #8a5000; }
+.origin-tag.merge { background: #f0e9fb; color: #5b3a9b; }
+/* Farbbalken am linken Rand. Bewusst KEIN Hintergrund: der ist schon durch „erledigt"
+   (grün) und „nicht benötigt" (grau/gestrichelt) belegt – der Balken bleibt in beiden
+   Zuständen sichtbar. */
+.name-row.origin-custom, .tree-ober.origin-custom, .tree-unter.origin-custom { border-left: 4px solid #e08a2e; }
+.name-row.origin-merge, .tree-ober.origin-merge, .tree-unter.origin-merge { border-left: 4px solid #7c5cc4; }
+/* In Ordnerzeilen steht das Abzeichen INNERHALB von .grp-name und fließt damit als Text
+   mit. Als eigenes Flex-Kind konkurrierte es sonst mit dem Namen um die Breite und
+   quetschte ihn auf schmalen Handys in Wortfragmente. */
+.tree-ober .grp-name .origin-tag, .tree-unter .grp-name .origin-tag { font-weight: 700; }
+.tree-ober.origin-custom .grp-name, .tree-ober.origin-merge .grp-name,
+.tree-unter.origin-custom .grp-name, .tree-unter.origin-merge .grp-name {
+  word-break: normal; overflow-wrap: break-word;
+}
+.tree-ober .del-btn, .tree-unter .del-btn {
+  flex: 0 0 auto; width: 34px; height: 34px; border-radius: 8px;
+  border: 1px solid #f3c4be; background: #fdecea; font-size: 15px; line-height: 1;
+}
+.name-actions .del-btn {
+  height: var(--tap); border-radius: 12px;
+  border: 1px solid #f3c4be; background: #fdecea; font-size: 19px;
+}
 .row-check { color: var(--ok); font-weight: 900; }
 .name-row.done .row-check { color: var(--ok); }
 .name-row.done .name-count { color: var(--done-text); }

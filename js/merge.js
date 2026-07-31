@@ -108,7 +108,9 @@ const Merge = (() => {
       if (!knownKeys.has(e.nodeKey)) {
         const node = {
           key: e.nodeKey, ober: e.ober || 'Allgemein', unter: e.unter || null,
-          bildname: e.bildname, pflicht: e.pflicht || 1, source: 'custom',
+          // 'merge' statt 'custom': im Baum als „von Kollege" gekennzeichnet, damit beim
+          // Löschen erkennbar ist, dass daran fremde Bilder hängen.
+          bildname: e.bildname, pflicht: e.pflicht || 1, source: 'merge',
         };
         job.customNames.push(node);
         knownKeys.add(e.nodeKey);

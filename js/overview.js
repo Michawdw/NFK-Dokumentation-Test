@@ -2,6 +2,12 @@
    Übersicht offener/erledigter Positionen. */
 const Overview = (() => {
 
+  // Kennzeichnung der Herkunft – Beschriftung identisch zum Baum in app.js.
+  const ORIGIN = {
+    custom: { cls: 'custom', text: 'eigen', title: 'selbst angelegt' },
+    merge: { cls: 'merge', text: 'von Kollege', title: 'über „Beiträge zusammenführen" dazugekommen' },
+  };
+
   // Reichert Knoten mit ist (Anzahl Bilder) und done (ist >= pflicht) an.
   // Ist = übernommene Vor-Anzahl (priorCount) + lokal aufgenommene Bilder.
   async function enrich(nodes) {
@@ -39,9 +45,13 @@ const Overview = (() => {
           const cnt = n.skipped ? 'nicht benötigt' : `${n.ist}/${n.pflicht}`;
           const priorTag = (!n.skipped && n.prior > 0)
             ? ` <span class="prior-tag" title="vom Vorteam erledigt">Vorteam: ${n.prior}</span>` : '';
+          // Herkunft wie im Baum kennzeichnen (gelöscht wird aber nur dort).
+          const o = ORIGIN[n.source];
+          const originTag = o
+            ? ` <span class="origin-tag ${o.cls}" title="${esc(o.title)}">${esc(o.text)}</span>` : '';
           html += `<div class="${cls}">
               <span class="ov-mark">${mark}</span>
-              <span class="ov-name">${esc(n.bildname)}${priorTag}</span>
+              <span class="ov-name">${esc(n.bildname)}${originTag}${priorTag}</span>
               <span class="ov-cnt">${cnt}</span>
             </div>`;
         }

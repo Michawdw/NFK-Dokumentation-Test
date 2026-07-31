@@ -477,6 +477,106 @@ const App = (() => {
     await renderTree();
   }
 
+  // ------------------------------------------- Eigene Namen/Bereiche kennzeichnen
+  // Selbst angelegte Positionen tragen source 'custom', über „Beiträge zusammenführen"
+  // eingespielte 'merge'. Beide sind löschbar, werden aber unterschiedlich beschriftet,
+  // damit niemand versehentlich fremde Bilder entfernt.
+  // „short" für Ordner-Kopfzeilen: dort teilen sich Name, Abzeichen, Zähler und zwei
+  // Knöpfe eine Zeile – mit dem langen Text bliebe für den Namen auf 360 px Breite zu
+  // wenig übrig und er würde mitten im Wort umbrechen. Die Langfassung steht im Tooltip.
+  const ORIGIN = {
+    custom: { cls: 'custom', text: 'eigen', short: 'eigen', title: 'selbst angelegt – kann gelöscht werden' },
+    merge: { cls: 'merge', text: 'von Kollege', short: 'Kollege', title: 'über „Beiträge zusammenführen" dazugekommen' },
+  };
+  const originOf = (n) => ORIGIN[n && n.source] || null;
+  const isOwnNode = (n) => !!originOf(n);
+
+  function originTag(n) {
+    const o = originOf(n);
+    return o ? ` <span class="origin-tag ${o.cls}" title="${escAttr(o.title)}">${escHtml(o.text)}</span>` : '';
+  }
+
+  // Herkunft eines Ordners: nur „eigen", wenn KEINE einzige Position daraus aus der
+  // Vorlage stammt. Gemischte Ordner (Vorlage + eigener Name) bleiben unmarkiert und
+  // ohne Sammel-Löschknopf – sonst ließen sich darüber Vorlagenpositionen mitlöschen.
+  function folderOrigin(nodes) {
+    if (!nodes.length || !nodes.every(isOwnNode)) return null;
+    return nodes.some((n) => n.source === 'merge') ? ORIGIN.merge : ORIGIN.custom;
+  }
+
+  // Entfernt eigene Positionen restlos: Fotos, Eintrag in customNames, übernommene
+  // Zähler und „nicht benötigt"-Markierung. Speichert NICHT – das macht der Aufrufer.
+  async function removeCustomNodes(nodes) {
+    const job = currentJob;
+    let fotos = 0;
+    for (const n of nodes) {
+      for (const p of await DB.getPhotos(job.id, n.key)) {
+        await DB.deletePhotoById(p.id);
+        fotos++;
+      }
+      if (job.customNames) job.customNames = job.customNames.filter((c) => c.key !== n.key);
+      if (job.priorCounts) delete job.priorCounts[n.key];
+      if (job.skipped && job.skipped.nodes) {
+        job.skipped.nodes = job.skipped.nodes.filter((k) => k !== n.key);
+      }
+    }
+    return fotos;
+  }
+
+  async function countPhotosOf(nodes) {
+    let n = 0;
+    for (const node of nodes) n += await DB.countPhotos(currentJob.id, node.key);
+    return n;
+  }
+
+  const bildText = (n) => n === 1 ? '1 Bild wird' : `${n} Bilder werden`;
+  // Hinweis nur zeigen, wenn es überhaupt Bilder gibt – sonst widerspricht er dem Satz
+  // „Es hängen keine Bilder daran".
+  const fremdHinweis = (o, fotos) => (o === ORIGIN.merge && fotos > 0)
+    ? '<p class="hint">Achtung: Diese Bilder stammen von einem Kollegen und wurden über „Beiträge zusammenführen" übernommen.</p>'
+    : '';
+
+  async function deleteCustomNameFlow(node) {
+    const o = originOf(node);
+    const fotos = await DB.countPhotos(currentJob.id, node.key);
+    const ok = await openConfirm(
+      'Eigenen Namen löschen?',
+      `<p>Position <b>„${escHtml(node.bildname)}"</b> wirklich löschen?</p>
+       <p class="hint">${fotos ? bildText(fotos) + ' mit gelöscht. ' : 'Es hängen keine Bilder daran. '}
+       Das kann nicht rückgängig gemacht werden.</p>${fremdHinweis(o, fotos)}`,
+      'Löschen', true);
+    if (!ok) return;
+    await removeCustomNodes([node]);
+    await saveCurrentJob();
+    await renderTree();
+    await renderBackupReminder('#backupReminder');
+    toast('Name gelöscht');
+  }
+
+  async function deleteCustomFolderFlow(nodes, label, level, folderKey) {
+    const o = folderOrigin(nodes);
+    const fotos = await countPhotosOf(nodes);
+    const ok = await openConfirm(
+      'Eigenen Bereich löschen?',
+      `<p>Bereich <b>„${escHtml(label)}"</b> mit <b>${nodes.length} Position${nodes.length === 1 ? '' : 'en'}</b>
+       wirklich löschen?</p>
+       <p class="hint">${fotos ? bildText(fotos) + ' mit gelöscht. ' : 'Es hängen keine Bilder daran. '}
+       Das kann nicht rückgängig gemacht werden.</p>${fremdHinweis(o, fotos)}`,
+      'Löschen', true);
+    if (!ok) return;
+    await removeCustomNodes(nodes);
+    // Ordner-eigene Reste: „nicht benötigt"-Markierung und Aufklapp-Zustand.
+    const job = currentJob;
+    if (job.skipped && job.skipped[level]) {
+      job.skipped[level] = job.skipped[level].filter((k) => k !== folderKey);
+    }
+    (level === 'obers' ? expandedObers : expandedUnters).delete(folderKey);
+    await saveCurrentJob();
+    await renderTree();
+    await renderBackupReminder('#backupReminder');
+    toast('Bereich gelöscht');
+  }
+
   async function renderTree() {
     const info = $('#templateInfo');
     const tree = $('#structureTree');
@@ -505,18 +605,27 @@ const App = (() => {
       const oberSkip = (skipSet('obers')).includes(ober);
       const oberExpanded = expandedObers.has(ober);
 
+      const oberOrigin = folderOrigin(allNodes);
+
       const head = document.createElement('div');
       head.className = 'tree-ober' + (oberExpanded ? ' open' : '')
-        + (oberAllDone ? ' alldone' : '') + (oberNotNeeded ? ' skipped' : '');
+        + (oberAllDone ? ' alldone' : '') + (oberNotNeeded ? ' skipped' : '')
+        + (oberOrigin ? ' origin-' + oberOrigin.cls : '');
       head.innerHTML = `<span class="chev">${oberExpanded ? '▼' : '▶'}</span>
-        <span class="grp-name">${escHtml(ober)}</span>
+        <span class="grp-name">${escHtml(ober)}${oberOrigin ? ` <span class="origin-tag ${oberOrigin.cls}" title="${escAttr(oberOrigin.title)}">${escHtml(oberOrigin.short)}</span>` : ''}</span>
         ${oberAllDone ? '<span class="grp-check" title="alle Pflichtbilder erledigt">✓</span>' : ''}
         ${oberNotNeeded
           ? '<span class="grp-stat skip">nicht benötigt</span>'
           : `<span class="grp-stat${oberAllDone ? ' done' : ''}">${oberDone}/${needed.length}</span>`}
-        <button class="skip-btn" title="${oberSkip ? 'wieder benötigt' : 'als nicht benötigt markieren'}">${oberSkip ? '↩' : '∅'}</button>`;
+        <button class="skip-btn" title="${oberSkip ? 'wieder benötigt' : 'als nicht benötigt markieren'}">${oberSkip ? '↩' : '∅'}</button>
+        ${oberOrigin ? '<button class="del-btn" title="Bereich mit allen Positionen löschen">🗑</button>' : ''}`;
       head.onclick = () => { toggleSet(expandedObers, ober); renderTree(); };
       head.querySelector('.skip-btn').onclick = (e) => { e.stopPropagation(); toggleSkip('obers', ober); };
+      const oberDel = head.querySelector('.del-btn');
+      if (oberDel) oberDel.onclick = (e) => {
+        e.stopPropagation();           // sonst klappt nur der Ordner auf/zu
+        deleteCustomFolderFlow(allNodes, ober, 'obers', ober);
+      };
       tree.appendChild(head);
 
       if (!oberExpanded) continue; // Inhalt zugeklappter Ordner wird nicht gebaut
@@ -535,18 +644,27 @@ const App = (() => {
           const uSkip = (skipSet('unters')).includes(uKey);
           const uExpanded = expandedUnters.has(uKey);
 
+          const uOrigin = folderOrigin(list);
+
           const uHead = document.createElement('div');
           uHead.className = 'tree-unter' + (uExpanded ? ' open' : '')
-            + (uAllDone ? ' alldone' : '') + (uNotNeeded ? ' skipped' : '');
+            + (uAllDone ? ' alldone' : '') + (uNotNeeded ? ' skipped' : '')
+            + (uOrigin ? ' origin-' + uOrigin.cls : '');
           uHead.innerHTML = `<span class="chev">${uExpanded ? '▼' : '▶'}</span>
-            <span class="grp-name">${escHtml(uk)}</span>
+            <span class="grp-name">${escHtml(uk)}${uOrigin ? ` <span class="origin-tag ${uOrigin.cls}" title="${escAttr(uOrigin.title)}">${escHtml(uOrigin.short)}</span>` : ''}</span>
             ${uAllDone ? '<span class="grp-check" title="alle Pflichtbilder erledigt">✓</span>' : ''}
             ${uNotNeeded
               ? '<span class="grp-stat skip">nicht benötigt</span>'
               : `<span class="grp-stat${uAllDone ? ' done' : ''}">${uDone}/${uNeeded.length}</span>`}
-            <button class="skip-btn" title="${uSkip ? 'wieder benötigt' : 'als nicht benötigt markieren'}">${uSkip ? '↩' : '∅'}</button>`;
+            <button class="skip-btn" title="${uSkip ? 'wieder benötigt' : 'als nicht benötigt markieren'}">${uSkip ? '↩' : '∅'}</button>
+            ${uOrigin ? '<button class="del-btn" title="Unterordner mit allen Positionen löschen">🗑</button>' : ''}`;
           uHead.onclick = () => { toggleSet(expandedUnters, uKey); renderTree(); };
           uHead.querySelector('.skip-btn').onclick = (e) => { e.stopPropagation(); toggleSkip('unters', uKey); };
+          const uDel = uHead.querySelector('.del-btn');
+          if (uDel) uDel.onclick = (e) => {
+            e.stopPropagation();
+            deleteCustomFolderFlow(list, uk, 'unters', uKey);
+          };
           body.appendChild(uHead);
 
           if (uExpanded) {
@@ -564,11 +682,15 @@ const App = (() => {
   }
 
   async function nameRow(n) {
+    const origin = originOf(n);
     const row = document.createElement('div');
-    row.className = 'name-row' + (n.done ? ' done' : '') + (n.skipped ? ' skipped' : '');
+    row.className = 'name-row' + (n.done ? ' done' : '') + (n.skipped ? ' skipped' : '')
+      + (origin ? ' origin-' + origin.cls : '');
     const nodeSkip = (skipSet('nodes')).includes(n.key);
     let statusLine;
     if (n.skipped) {
+      // Abzeichen auch hier anhängen – sonst verschwindet die Herkunft, sobald eine
+      // Position auf „nicht benötigt" steht.
       statusLine = 'nicht benötigt';
     } else {
       statusLine = n.done ? '<span class="row-check">✓</span> erledigt' : 'offen';
@@ -583,17 +705,20 @@ const App = (() => {
         <span class="count-badge">${n.skipped ? '–' : n.ist + '/' + n.pflicht}</span>
         <div class="name-label">${escHtml(n.bildname)}</div>
       </div>
-      <div class="name-count">${statusLine}</div>
+      <div class="name-count">${statusLine}${originTag(n)}</div>
       <div class="thumbs"></div>
       <div class="name-actions">
         <button class="skip-btn" title="${nodeSkip ? 'wieder benötigt' : 'als nicht benötigt markieren'}">${nodeSkip ? '↩' : '∅'}</button>
         <button class="gal-btn" title="Aus Galerie">🖼️</button>
         <button class="cam-btn" title="Foto aufnehmen">📷</button>
+        ${origin ? '<button class="del-btn" title="Eigenen Namen löschen">🗑</button>' : ''}
       </div>`;
 
     row.querySelector('.skip-btn').onclick = () => toggleSkip('nodes', n.key);
     row.querySelector('.cam-btn').onclick = () => pickPhoto(n, true);
     row.querySelector('.gal-btn').onclick = () => pickPhoto(n, false);
+    const del = row.querySelector('.del-btn');
+    if (del) del.onclick = () => deleteCustomNameFlow(n);
 
     const thumbs = row.querySelector('.thumbs');
     const photos = await DB.getPhotos(currentJob.id, n.key);
@@ -937,7 +1062,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v34'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v35'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
