@@ -426,7 +426,7 @@ const App = (() => {
 
   async function onTemplateChange() {
     const name = $('#templateSelect').value;
-    if (!name || name === Structure.EXTERNAL_LABEL) return;
+    if (!name || name === Structure.EXTERNAL_LABEL || name === Structure.HANDOVER_LABEL) return;
     toast('Lade Vorlage…');
     try {
       await Structure.importFromCatalog(name);
@@ -1046,8 +1046,9 @@ const App = (() => {
     // gemerkt und die Backup-Erinnerung aktualisiert wird.
     $('#exportZipBtn').onclick = doBackupNow;
     $('#handoverExportBtn').onclick = handoverExport;
-    $('#handoverImport').addEventListener('change', handoverImport);
-    $('#mergeImport').addEventListener('change', mergeContribution);
+    // Beide Knöpfe nehmen beides an (.xlsx wie .zip) – importAnyFile entscheidet.
+    $('#handoverImport').addEventListener('change', importAnyFile);
+    $('#mergeImport').addEventListener('change', importAnyFile);
     $('#diarySaveBtn').onclick = saveDiary;
     $('#diaryExportBtn').onclick = exportDiary;
     $('#modalOverlay').addEventListener('click', (e) => {
@@ -1062,7 +1063,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v35'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v36'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
@@ -1126,34 +1127,64 @@ const App = (() => {
     }
   }
 
-  async function mergeContribution(e) {
+  // Macht den übergebenen Auftrag zum aktuellen (nach Übergabe-/ZIP-Import).
+  async function adoptJob(job) {
+    currentJob = job;
+    await DB.setCurrentJobId(job.id);
+    catalogNames = null; // Vorlagen-Dropdown für diesen Auftrag neu aufbauen
+  }
+
+  // Gemeinsamer Einstieg für BEIDE Import-Knöpfe. Erkannt wird am Inhalt, nicht an der
+  // Endung: die Dateiauswahl auf Android hält sich nicht zuverlässig an „accept", und wer
+  // die Bilddoku-ZIP über „Übergabe import" wählt, soll nicht auf einer Fehlermeldung
+  // sitzenbleiben. Eine .xlsx ist selbst ein ZIP – unterschieden wird an xl/workbook.xml.
+  async function importAnyFile(e) {
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
     if (!file) return;
+    toast('Lese Datei…');
+    let zip = null, art = null;
+    try {
+      zip = await JSZip.loadAsync(await file.arrayBuffer());
+      if (zip.file('xl/workbook.xml')) art = 'xlsx';
+      else if (zip.file('manifest.json') || zip.file('uebersicht.csv')
+        || Object.keys(zip.files).some((p) => /^[^/]+\.xlsx$/i.test(p) && !zip.files[p].dir)) art = 'zip';
+    } catch (err) {
+      console.warn('Datei ist weder .xlsx noch .zip:', err);
+    }
+    if (art === 'xlsx') return handoverImport(file);
+    if (art === 'zip') return mergeContribution(zip);
+    toast('Unbekannte Datei – erwartet wird eine Übergabe-Datei (.xlsx) oder eine Bilddoku-ZIP.');
+  }
+
+  async function mergeContribution(zip) {
     toast('Führe Bilder zusammen…');
     try {
-      const r = await Merge.importContributionZip(file);
+      const r = await Merge.importContributionZip(zip);
       await renderTree();
-      let msg = `${r.added} Bild(er) übernommen`;
-      if (r.skipped) msg += `, ${r.skipped} bereits vorhanden`;
-      if (r.addedNodes && r.addedNodes.length) msg += `, ${r.addedNodes.length} neue Position(en)`;
-      toast(msg);
+      await renderBackupReminder('#backupReminder');
+      if (r.jobNeu || r.strukturUebernommen) {
+        populateTemplateSelect(await Structure.getSelectedTemplate());
+      }
+      const teile = [];
+      if (r.jobNeu) teile.push('Auftrag aus ZIP angelegt');
+      else if (r.strukturUebernommen) teile.push('Struktur übernommen');
+      teile.push(`${r.added} Bild(er) übernommen`);
+      if (r.skipped) teile.push(`${r.skipped} bereits vorhanden`);
+      if (r.addedNodes && r.addedNodes.length) teile.push(`${r.addedNodes.length} neue Position(en)`);
+      if (r.unbekannt && !r.strukturUebernommen) teile.push(`${r.unbekannt} fremde Position(en)`);
+      toast(teile.join(' · '), 4200);
     } catch (err) {
       console.error(err);
       toast('Zusammenführen fehlgeschlagen: ' + (err.message || err));
     }
   }
 
-  async function handoverImport(e) {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
+  async function handoverImport(file) {
     toast('Lese Übergabe-Datei…');
     try {
       const job = await Handover.importXlsx(file);
-      currentJob = job;
-      await DB.setCurrentJobId(job.id);
-      catalogNames = null;
+      await adoptJob(job);
       show('view-start');
       await loadStartView();
       toast('Auftrag übernommen: ' + (job.name || ''));
@@ -1166,5 +1197,5 @@ const App = (() => {
   document.addEventListener('DOMContentLoaded', init);
 
   // Öffentlich für andere Module:
-  return { toast, openInfoModal, openFormModal, openConfirm, shareFile, show, getCurrentJob, saveCurrentJob };
+  return { toast, openInfoModal, openFormModal, openConfirm, shareFile, show, getCurrentJob, saveCurrentJob, adoptJob };
 })();

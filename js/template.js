@@ -122,6 +122,10 @@ const Structure = (() => {
   }
 
   const EXTERNAL_LABEL = '(Eigener Import)';
+  // Struktur kam aus einer Übergabe-Datei/Bilddoku-ZIP, die keinen Vorlagennamen
+  // mitliefert (alte ZIPs kennen nur die uebersicht.csv). Ohne eigenes Label stünde im
+  // Dropdown weiter die vorherige Vorlage – der Baum zeigte dann etwas anderes als der Name.
+  const HANDOVER_LABEL = '(Aus Übergabe)';
 
   // Legt einen eigenen Namen/Bereich im aktuellen Auftrag an (bleibt bei Vorlagenwechsel erhalten).
   async function addCustomName(node) {
@@ -173,7 +177,17 @@ const Structure = (() => {
     const custom = (job && job.customNames) || [];
     const map = new Map();
     for (const n of tpl) map.set(n.key, n);
-    for (const c of custom) if (!map.has(c.key)) map.set(c.key, c); // eigene ergänzen, keine Doppel
+    for (const c of custom) {
+      if (map.has(c.key)) continue; // von der Vorlage überlagert – dort gewinnt die Vorlage
+      // Herkunft hier einmalig normalisieren, statt sie überall einzeln zu prüfen:
+      // Alles, was in customNames steht, ist selbst angelegt ('custom') oder beim
+      // Zusammenführen übernommen ('merge'). Ältere App-Versionen könnten das Feld gar
+      // nicht oder abweichend gesetzt haben – dann gilt 'custom'. Nur so bekommen auch
+      // Altbestände aus laufenden Aufträgen ihr Abzeichen und ihren Löschknopf.
+      map.set(c.key, (c.source === 'custom' || c.source === 'merge')
+        ? c
+        : Object.assign({}, c, { source: 'custom' }));
+    }
     return Array.from(map.values());
   }
 
@@ -192,6 +206,6 @@ const Structure = (() => {
 
   return {
     SEP, makeKey, unterKey, isSkipped, parseWorkbook, importFile, addCustomName, getMerged, groupForDisplay,
-    listTemplates, importFromCatalog, getSelectedTemplate, EXTERNAL_LABEL, loadExcelJS,
+    listTemplates, importFromCatalog, getSelectedTemplate, EXTERNAL_LABEL, HANDOVER_LABEL, loadExcelJS,
   };
 })();

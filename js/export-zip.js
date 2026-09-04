@@ -90,6 +90,17 @@ const ExportZip = (() => {
     zip.file('uebersicht.csv', '﻿' + lines.join('\r\n'));
     zip.file('manifest.json', JSON.stringify(manifest, null, 2));
 
+    // Übergabe-Mappe mit in die ZIP: damit ist die ZIP ein vollständiges Übergabepaket
+    // (Struktur, Zähler, „nicht benötigt", Kopfdaten + Bilder). Der Empfänger kann den
+    // Auftrag daraus fortführen, ohne dass jemand vorher an „Übergabe export" denken muss.
+    // Schlägt der Aufbau fehl (z. B. ExcelJS nicht ladbar), bleibt die ZIP trotzdem gültig –
+    // die Bilder zu sichern ist wichtiger als die Beilage.
+    try {
+      zip.file(Handover.buildName(job), await Handover.buildWorkbookBuffer(job));
+    } catch (e) {
+      console.warn('Übergabe-Datei konnte der ZIP nicht beigelegt werden:', e);
+    }
+
     if (totalPhotos === 0) {
       App.toast('Noch keine Bilder aufgenommen.');
       return;
