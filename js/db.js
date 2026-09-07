@@ -35,7 +35,26 @@ const DB = (() => {
         // Alt-Stores (project/structure/customNames/diary) werden NICHT gelöscht –
         // sie werden nach dem Öffnen für die Datenmigration ausgelesen.
       };
-      req.onsuccess = () => resolve(req.result);
+      // Ein zweiter offener Tab (App als PWA UND im Browser) blockiert das Schema-Upgrade.
+      // Ohne diesen Handler bliebe die Promise für immer offen: open() merkt sie sich in
+      // _ready, jeder spätere Zugriff hinge mit – die App zeigte eine leere Startseite ohne
+      // jede Fehlermeldung. Lieber ein klarer Abbruch mit Handlungsanweisung.
+      req.onblocked = () => reject(new Error(
+        'Die App ist noch in einem anderen Fenster geöffnet. Bitte alle anderen Fenster '
+        + 'schließen und erneut versuchen.'));
+      req.onsuccess = () => {
+        const db = req.result;
+        // Fordert ein anderer Tab ein Upgrade an, muss diese Verbindung weichen – sonst
+        // blockiert dieser Tab dort dieselbe Situation.
+        db.onversionchange = () => {
+          db.close();
+          _db = null; _ready = null;
+          if (typeof App !== 'undefined' && App.toast) {
+            App.toast('Die App wurde in einem anderen Fenster aktualisiert – bitte neu laden.', 6000);
+          }
+        };
+        resolve(db);
+      };
       req.onerror = () => reject(req.error);
     });
   }
@@ -68,13 +87,20 @@ const DB = (() => {
   async function setMeta(key, value) { return reqP((await store('meta', 'readwrite')).put(value, key)); }
 
   // Stabile, einmalig erzeugte Geräte-ID (für eindeutige Bild-IDs srcId).
-  async function getDeviceId() {
-    let id = await getMeta('deviceId');
-    if (!id) {
-      id = 'dev_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-      await setMeta('deviceId', id);
+  // Die Promise wird gemerkt, damit parallele Aufrufer nicht zwei verschiedene IDs anlegen.
+  let _deviceIdP = null;
+  function getDeviceId() {
+    if (!_deviceIdP) {
+      _deviceIdP = (async () => {
+        let id = await getMeta('deviceId');
+        if (!id) {
+          id = 'dev_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+          await setMeta('deviceId', id);
+        }
+        return id;
+      })();
     }
-    return id;
+    return _deviceIdP;
   }
 
   // ---- Migration v2 -> v3 (einmalig) ----
@@ -170,8 +196,10 @@ const DB = (() => {
     await saveJob(job);
     return job;
   }
+  // Reihenfolge ist wichtig: erst die abhängigen Daten, zuletzt der Auftrag selbst.
+  // Umgekehrt (wie bis v38) blieben bei einem Abbruch dazwischen Fotos zurück, die über
+  // keine Funktion mehr erreichbar sind – sie belegten dauerhaft Speicher, unsichtbar.
   async function deleteJob(id) {
-    await reqP((await store('jobs', 'readwrite')).delete(id));
     // zugehörige Fotos löschen
     const ps = await store('photos', 'readwrite');
     await new Promise((resolve, reject) => {
@@ -187,6 +215,8 @@ const DB = (() => {
       cur.onsuccess = () => { const c = cur.result; if (c) { c.delete(); c.continue(); } else resolve(); };
       cur.onerror = () => reject(cur.error);
     });
+    // Erst jetzt den Auftrag selbst – ab hier ist nichts mehr verwaist.
+    await reqP((await store('jobs', 'readwrite')).delete(id));
   }
   async function getCurrentJobId() { return getMeta('currentJobId'); }
   async function setCurrentJobId(id) { return setMeta('currentJobId', id); }
@@ -195,6 +225,26 @@ const DB = (() => {
   async function countPhotos(jobId, nodeKey) {
     const s = await store('photos', 'readonly');
     return reqP(s.index('byJobNode').count(IDBKeyRange.only([jobId, nodeKey])));
+  }
+  // Bildanzahl je Position für einen ganzen Auftrag – in EINER Transaktion und ohne die
+  // Blobs zu laden (openKeyCursor liest nur Schlüssel). Ersetzt das frühere countPhotos je
+  // Position: bei 370 Positionen waren das 370 Transaktionen bei jedem Auf- und Zuklappen
+  // eines Ordners und die spürbarste Bremse auf älteren Geräten.
+  async function countPhotosByNode(jobId) {
+    const s = await store('photos', 'readonly');
+    const map = new Map();
+    await new Promise((resolve, reject) => {
+      const cur = s.index('byJobNode').openKeyCursor(IDBKeyRange.bound([jobId, ''], [jobId, '￿']));
+      cur.onsuccess = () => {
+        const c = cur.result;
+        if (!c) { resolve(); return; }
+        const nodeKey = c.key[1];
+        map.set(nodeKey, (map.get(nodeKey) || 0) + 1);
+        c.continue();
+      };
+      cur.onerror = () => reject(cur.error);
+    });
+    return map;
   }
   async function getPhotos(jobId, nodeKey) {
     const s = await store('photos', 'readonly');
@@ -226,13 +276,17 @@ const DB = (() => {
   async function deletePhotoById(id) {
     return reqP((await store('photos', 'readwrite')).delete(id));
   }
-  // Nummeriert die Bilder einer Position lückenlos neu: prior+1 … prior+n
-  // (Reihenfolge nach Aufnahmezeit, ersatzweise alter Nummer).
+  // Nummeriert die Bilder einer Position lückenlos neu: prior+1 … prior+n.
   // Nötig nach jedem Löschen, weil die nächste freie Nummer als prior+Anzahl+1
   // berechnet wird – ohne Neunummerierung gäbe es sonst zwei Bilder gleicher Nummer.
+  // Sortiert wird nach der BISHERIGEN Nummer, nicht nach der Aufnahmezeit: beim
+  // Zusammenführen trägt ein übernommenes Bild die Aufnahmezeit des Kollegen und schöbe
+  // sich sonst vor die eigenen – aus „Kassen Totale_01.jpg" würde „_02.jpg", nachdem diese
+  // Datei bereits exportiert und weitergegeben wurde. Die Zusage im Kopf von merge.js
+  // („Vorhandene Bilder werden NIE umbenannt") gilt nur mit dieser Sortierung.
   async function renumberNode(jobId, nodeKey, prior) {
     const photos = await getPhotos(jobId, nodeKey);
-    photos.sort((a, b) => (a.createdAt || a.seq || 0) - (b.createdAt || b.seq || 0));
+    photos.sort((a, b) => (a.seq || 0) - (b.seq || 0) || (a.createdAt || 0) - (b.createdAt || 0));
     const changed = [];
     photos.forEach((p, i) => {
       const seq = (prior || 0) + i + 1;
@@ -276,7 +330,7 @@ const DB = (() => {
     getMeta, setMeta, getDeviceId,
     listJobs, getJob, saveJob, createJob, deleteJob, newJob,
     getCurrentJobId, setCurrentJobId,
-    countPhotos, getPhotos, getAllPhotos, getBilddokuPhotos, isBilddokuPhoto,
+    countPhotos, countPhotosByNode, getPhotos, getAllPhotos, getBilddokuPhotos, isBilddokuPhoto,
     addPhoto, deletePhotoById, renumberNode, updatePhoto, getPhotoSrcIds,
     getDiary, saveDiary, listDiary, deleteDiary,
   };

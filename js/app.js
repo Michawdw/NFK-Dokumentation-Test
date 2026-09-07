@@ -21,7 +21,12 @@ const App = (() => {
     'view-behinderung': 'Baubehinderungsanzeige',
   };
 
+  let aktiveView = 'view-start';
   function _switchView(viewId) {
+    // Offene Eingaben beim Verlassen sichern (Zurück-Pfeil, Android-Zurück, Funktionswechsel).
+    if (aktiveView === 'view-bautagebuch' && viewId !== 'view-bautagebuch') flushDiary();
+    if (aktiveView === 'view-vorpruefung' && viewId !== 'view-vorpruefung') Vorpruefung.flush();
+    aktiveView = viewId;
     $$('.view').forEach((v) => v.classList.toggle('active', v.id === viewId));
     $('#topTitle').textContent = viewTitles[viewId] || 'NFK Doku';
     $('#backBtn').hidden = (viewId === 'view-start');
@@ -131,15 +136,71 @@ const App = (() => {
     });
   }
 
+  // Auswahl-Dialog: je Feld entscheiden, welcher von zwei Werten gilt.
+  // felder: [{ name, label, eigen, paket, vorauswahl }] – vorauswahl 'eigen' | 'paket'.
+  // Liefert { <name>: 'eigen' | 'paket', … } oder null, wenn nichts übernommen werden soll.
+  // Abbrechen heißt hier bewusst NICHT „Import abbrechen", sondern „meine Werte behalten" –
+  // deshalb ist der Knopf auch so beschriftet.
+  function openChoiceModal(title, html, felder, labels) {
+    return new Promise((resolve) => {
+      $('#modalTitle').textContent = title;
+      $('#modalBody').innerHTML = html + felder.map((f) => {
+        const w = (v) => v === '' || v == null ? '(leer)' : v;
+        return `<label>${escHtml(f.label)}
+          <select name="${escAttr(f.name)}">
+            <option value="eigen"${f.vorauswahl !== 'paket' ? ' selected' : ''}>${escHtml(w(f.eigen))} — deiner</option>
+            <option value="paket"${f.vorauswahl === 'paket' ? ' selected' : ''}>${escHtml(w(f.paket))} — aus dem Paket</option>
+          </select></label>`;
+      }).join('');
+      const cancel = $('#modalCancel'), ok = $('#modalOk'), overlay = $('#modalOverlay');
+      cancel.hidden = false;
+      cancel.textContent = (labels && labels.cancel) || 'Abbrechen';
+      ok.textContent = (labels && labels.ok) || 'OK';
+      overlay.hidden = false;
+      const finish = (val) => {
+        overlay.hidden = true;
+        cancel.textContent = 'Abbrechen';
+        ok.textContent = 'OK';
+        overlay.onclick = null;
+        resolve(val);
+      };
+      cancel.onclick = () => finish(null);
+      $('#modalClose').onclick = () => finish(null);
+      ok.onclick = () => {
+        const wahl = {};
+        $$('#modalBody select[name]').forEach((el) => { wahl[el.name] = el.value; });
+        finish(wahl);
+      };
+      overlay.onclick = (e) => { if (e.target === overlay) finish(null); };
+    });
+  }
+
+  // Vierstellige Filialnummer aus beliebiger Schreibweise: „7423", „LI7423", „Li7423",
+  // „DE7423", „7423 München", „Filiale 2 - 7423" -> alle „7423". Die Nummer ist die einzige
+  // Angabe, die auf allen Geräten gleich ist – der Rest des Feldes wird frei getippt.
+  // Fünfstellige Zahlen liefern bewusst nichts: das ist keine Filialnummer.
+  function filialNr(text) {
+    const m = String(text == null ? '' : text).match(/(?:^|\D)(\d{4})(?!\d)/);
+    return m ? m[1] : null;
+  }
+
+  // Liefert true, wenn die Datei das Gerät verlassen hat (geteilt oder heruntergeladen),
+  // und false, wenn der Nutzer den Teilen-Dialog abgebrochen hat. Der Rückgabewert ist
+  // wichtig: doBackupNow darf einen Auftrag nur dann als gesichert vermerken, wenn die ZIP
+  // tatsächlich weitergegeben wurde – sonst meldet die Backup-Erinnerung „alles gesichert",
+  // während die einzige Kopie weiterhin nur auf dem Handy liegt.
   async function shareFile(blob, filename, mime, title) {
     const file = new File([blob], filename, { type: mime });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
         await navigator.share({ files: [file], title: title || filename });
         toast('Geteilt: ' + filename);
-        return;
+        return true;
       } catch (e) {
-        if (e && e.name === 'AbortError') return; // Nutzer hat abgebrochen
+        if (e && e.name === 'AbortError') {
+          toast('Abgebrochen – die Datei wurde nicht abgelegt.');
+          return false;
+        }
         // sonst Fallback Download
       }
     }
@@ -149,6 +210,19 @@ const App = (() => {
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
     toast('Gespeichert: ' + filename);
+    return true;
+  }
+
+  // Verständlicher Text zu einem Fehler. Ein voller Gerätespeicher meldet sich als
+  // QuotaExceededError – ohne eigenen Hinweis liest der Techniker „Fehler beim Speichern"
+  // und fotografiert weiter, obwohl ab jetzt jedes Bild verlorengeht.
+  function fehlerText(err) {
+    const name = err && err.name;
+    if (name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+      return 'Der Speicher des Geräts ist voll. Bitte zuerst sichern (ZIP-Export) und '
+        + 'abgeschlossene Aufträge löschen – bis dahin können keine Bilder mehr gespeichert werden.';
+    }
+    return (err && err.message) || String(err);
   }
 
   const escHtml = (s) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
@@ -169,9 +243,11 @@ const App = (() => {
   async function switchJob(id) {
     const job = await DB.getJob(id);
     if (!job) return;
+    await flushDiary();            // offene Eingaben gehören noch zum ALTEN Auftrag
+    await Vorpruefung.flush();
     currentJob = job;
     await DB.setCurrentJobId(id);
-    catalogNames = null; // Katalog/Vorlage neu für diesen Auftrag laden
+    resetJobState();
     await loadStartView();
     toast('Auftrag „' + (job.name || job.header.filiale || '') + '" geöffnet');
   }
@@ -240,7 +316,7 @@ const App = (() => {
     if (currentJob && currentJob.id === job.id) {
       currentJob = null;
       await DB.setCurrentJobId(null);
-      catalogNames = null;
+      resetJobState();
       await ensureCurrentJob();
     }
     await loadStartView();
@@ -248,10 +324,12 @@ const App = (() => {
   }
 
   async function newJobFlow() {
+    await flushDiary();            // offene Eingaben gehören noch zum bisherigen Auftrag
+    await Vorpruefung.flush();
     const job = await DB.createJob('Auftrag ' + ((await DB.listJobs()).length + 1));
     currentJob = job;
     await DB.setCurrentJobId(job.id);
-    catalogNames = null;
+    resetJobState();
     await loadStartView();
     // Kein direkter Sprung: erst Stammdaten ausfüllen + speichern, danach folgt die
     // Vorprüfung automatisch (siehe saveProjectForm).
@@ -261,6 +339,8 @@ const App = (() => {
   // Füllt Auftragsliste + Projektkopf-Formular des aktiven Auftrags.
   async function loadStartView() {
     await renderJobList();
+    const hint = $('#currentJobHint');
+    if (hint) hint.textContent = currentJob ? '· ' + (currentJob.name || currentJob.header.filiale || '') : '';
     const h = (currentJob && currentJob.header) || {};
     const f = $('#projectForm');
     f.filiale.value = h.filiale || '';
@@ -310,7 +390,12 @@ const App = (() => {
     if (!photos.length) { el.hidden = true; return; } // nichts zu verlieren
 
     const last = job.lastBackupAt || 0;
-    const unsaved = photos.filter((p) => (p.createdAt || 0) > last).length;
+    // Maßgeblich ist, wann das Bild auf DIESES Gerät kam: bei übernommenen Bildern trägt
+    // createdAt die Aufnahmezeit des Kollegen und liegt oft vor der letzten eigenen
+    // Sicherung – ohne importedAt meldete der Banner direkt nach einem Merge „alles
+    // gesichert", obwohl hunderte Bilder noch in keiner ZIP stecken.
+    const aufDemGeraetSeit = (p) => Math.max(p.createdAt || 0, p.importedAt || 0);
+    const unsaved = photos.filter((p) => aufDemGeraetSeit(p) > last).length;
     const days = last ? Math.floor((Date.now() - last) / 86400000) : null;
     const ago = days === null ? '' : days <= 0 ? 'heute' : days === 1 ? 'gestern' : `vor ${days} Tagen`;
 
@@ -338,10 +423,13 @@ const App = (() => {
     toast('Erzeuge Sicherung…');
     try {
       const res = await ExportZip.build();
-      if (res && res.totalPhotos) {
+      // Nur als gesichert vermerken, wenn die ZIP das Gerät wirklich verlassen hat.
+      if (res && res.totalPhotos && res.geteilt) {
         currentJob.lastBackupAt = Date.now();
         await DB.saveJob(currentJob);
         toast('Sicherung erstellt – bitte in Drive/Chat ablegen.');
+      } else if (res && res.totalPhotos) {
+        toast('Sicherung NICHT abgelegt – bitte erneut sichern.', 4200);
       }
     } catch (e) {
       console.error(e);
@@ -577,12 +665,21 @@ const App = (() => {
     toast('Bereich gelöscht');
   }
 
+  // Läuft renderTree erneut an, während ein vorheriger Lauf noch auf die Datenbank wartet,
+  // widerruft der neue Lauf per revokeThumbs die Object-URLs, die der alte gerade in seine
+  // <img>-Elemente schreibt: schwarze Vorschaubilder und doppelt einsortierte Zeilen.
+  // Deshalb bekommt jeder Lauf eine Generation; überholte Läufe brechen am nächsten
+  // Prüfpunkt ab, ohne den Baum weiter anzufassen.
+  let treeGen = 0;
   async function renderTree() {
+    const gen = ++treeGen;
+    const veraltet = () => gen !== treeGen;
     const info = $('#templateInfo');
     const tree = $('#structureTree');
     revokeThumbs();
 
     const nodes = await Structure.getMerged();
+    if (veraltet()) return;
     const tplCount = ((currentJob && currentJob.structure) || []).length;
     info.textContent = nodes.length
       ? `${nodes.length} Positionen (${tplCount} aus Vorlage, ${nodes.length - tplCount} eigene).`
@@ -591,6 +688,7 @@ const App = (() => {
     if (nodes.length === 0) { tree.innerHTML = ''; return; }
 
     const enriched = await Overview.enrich(nodes);
+    if (veraltet()) return;
     const grp = Structure.groupForDisplay(enriched);
 
     tree.innerHTML = '';
@@ -671,11 +769,11 @@ const App = (() => {
             const uBody = document.createElement('div');
             uBody.className = 'tree-body';
             body.appendChild(uBody);
-            for (const n of list) uBody.appendChild(await nameRow(n));
+            for (const n of list) { const zeile = await nameRow(n); if (veraltet()) return; uBody.appendChild(zeile); }
           }
         } else {
           // Positionen direkt im Oberordner (ohne Unterordner)
-          for (const n of list) body.appendChild(await nameRow(n));
+          for (const n of list) { const zeile = await nameRow(n); if (veraltet()) return; body.appendChild(zeile); }
         }
       }
     }
@@ -797,21 +895,32 @@ const App = (() => {
     (camera ? cameraInput : galleryInput).click();
   }
 
+  let fotoLaeuft = false;
   async function onPhotosSelected(e) {
     const files = Array.from(e.target.files || []);
     e.target.value = ''; // erlaubt erneute Auswahl derselben Datei
     if (!files.length || !currentNode) return;
+    // Zwei gleichzeitige Läufe würden dieselbe Bildnummer vergeben (die nächste freie wird
+    // aus prior + Anzahl berechnet). Im Export erzeugen zwei Bilder mit gleicher Nummer
+    // denselben Pfad – JSZip überschreibt, ein Bild fehlt still in der Sicherung.
+    if (fotoLaeuft) { toast('Bitte warten – Bilder werden noch verarbeitet.'); return; }
+    // Zielposition festhalten: currentNode ändert sich, sobald der Techniker während der
+    // Verarbeitung eine andere Position antippt – die restlichen Bilder landeten sonst dort.
+    const zielNode = currentNode;
+    fotoLaeuft = true;
     toast(files.length > 1 ? `Verarbeite ${files.length} Bilder…` : 'Verarbeite Bild…');
     try {
       for (const file of files) {
-        await Photos.addToNode(currentNode, file);
+        await Photos.addToNode(zielNode, file);
       }
       await renderTree();
       await renderBackupReminder('#backupReminder');
       toast('Gespeichert');
     } catch (err) {
       console.error(err);
-      toast('Fehler beim Speichern des Bildes');
+      toast('Bild nicht gespeichert: ' + fehlerText(err), 5000);
+    } finally {
+      fotoLaeuft = false;
     }
   }
 
@@ -864,6 +973,7 @@ const App = (() => {
 
   // ------------------------------------------------------- Bautagebuch-View
   let diaryDate = null;
+  let diaryAutoSaveAktiv = false;
 
   async function initDiaryView() {
     const f = $('#diaryForm');
@@ -872,7 +982,16 @@ const App = (() => {
     f.datum.value = diaryDate;
     await loadDiaryForDate(diaryDate);
     await renderDiaryArchive();
-    f.datum.onchange = async () => { diaryDate = f.datum.value; await loadDiaryForDate(diaryDate); await renderDiaryArchive(); };
+    f.datum.onchange = async () => {
+      await flushDiary();                 // alten Tag sichern, bevor das Formular umschaltet
+      diaryDate = f.datum.value;
+      await loadDiaryForDate(diaryDate);
+      await renderDiaryArchive();
+    };
+    if (!diaryAutoSaveAktiv) {            // Listener nur einmal registrieren
+      diaryAutoSaveAktiv = true;
+      f.addEventListener('input', scheduleDiarySave);
+    }
   }
 
   function fmtDate(datum) {
@@ -903,6 +1022,7 @@ const App = (() => {
         <span class="da-go">öffnen ›</span>
         <button class="da-del" title="Tag löschen">🗑</button>`;
       div.querySelector('.da-main').onclick = async () => {
+        await flushDiary();            // aktuellen Tag sichern, bevor ein anderer geladen wird
         diaryDate = day.datum;
         $('#diaryForm').datum.value = day.datum;
         await loadDiaryForDate(day.datum);
@@ -1000,6 +1120,41 @@ const App = (() => {
     };
   }
 
+  // Speichert den aktuellen Formularstand automatisch. Bis v38 ging ein kompletter
+  // Bautagebuch-Tag verloren, wenn statt „💾 Tag speichern" der Zurück-Pfeil getippt oder
+  // das Datum gewechselt wurde – das Formular wurde dabei kommentarlos überschrieben.
+  // datumFuer: unter welchem Tag gespeichert wird. Beim Datumswechsel steht im Feld bereits
+  // das NEUE Datum, gespeichert werden muss aber der alte Tag.
+  async function autoSaveDiary(datumFuer) {
+    if (!currentJob) return false;
+    const f = $('#diaryForm');
+    if (!f || !f.datum) return false;
+    const model = gatherDiary();
+    if (datumFuer) model.datum = datumFuer;
+    if (!model.datum) return false;
+    // Ein unberührtes Formular soll keinen leeren Archiv-Eintrag anlegen. „ortDatum" und
+    // „anzTechniker" zählen nicht als Inhalt – beide sind vorbelegt.
+    const hatInhalt = model.rows.length || model.taetigkeiten.trim()
+      || model.behinderungen.trim() || model.vorkommnisse.trim();
+    if (!hatInhalt) return false;
+    await DB.saveDiary(currentJob.id, model);
+    return true;
+  }
+
+  let diarySaveTimer = null;
+  function scheduleDiarySave() {
+    clearTimeout(diarySaveTimer);
+    diarySaveTimer = setTimeout(() => {
+      autoSaveDiary(diaryDate).catch((e) => console.warn('Auto-Speichern fehlgeschlagen', e));
+    }, 800);
+  }
+
+  // Sofort sichern (Ansicht wird verlassen, App geht in den Hintergrund).
+  async function flushDiary() {
+    clearTimeout(diarySaveTimer);
+    try { await autoSaveDiary(diaryDate); } catch (e) { console.warn('Auto-Speichern fehlgeschlagen', e); }
+  }
+
   async function saveDiary() {
     const model = gatherDiary();
     if (!model.datum) { toast('Datum fehlt'); return; }
@@ -1033,7 +1188,16 @@ const App = (() => {
   // ------------------------------------------------------------------- Init
   function bindEvents() {
     $('#backBtn').onclick = () => history.back();
-    window.addEventListener('popstate', () => _switchView('view-start'));
+    // Zur zuletzt verlassenen Ansicht zurück, nicht pauschal zur Startseite: sonst blieben
+    // gepushte Einträge im Verlauf liegen und der Android-Zurück-Button wirkte mehrfach
+    // wirkungslos, bevor die App schloss.
+    window.addEventListener('popstate', (e) => {
+      _switchView((e.state && e.state.nfk) ? e.state.nfk : 'view-start');
+    });
+    // Android friert die App beim Wegwischen ein oder beendet sie – vorher noch sichern.
+    const alleSichern = () => { flushDiary(); Vorpruefung.flush(); };
+    document.addEventListener('visibilitychange', () => { if (document.hidden) alleSichern(); });
+    window.addEventListener('pagehide', alleSichern);
     $$('[data-go]').forEach((b) => b.onclick = () => goGuard(b.dataset.go));
     $('#projectForm').addEventListener('submit', saveProjectForm);
     $('#newJobBtn').onclick = newJobFlow;
@@ -1063,24 +1227,37 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v36'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v39'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
     const clean = String(v || APP_VERSION).replace('nfk-doku-', '');
     el.textContent = 'Version ' + clean;
   }
+  // Angezeigt wird IMMER die Version des gerade laufenden JavaScript-Codes (APP_VERSION),
+   // nicht die des Service Workers: Der übernimmt per skipWaiting sofort, während die
+   // geöffnete Seite weiterhin den alten Code ausführt. Bis v38 stand deshalb schon die neue
+   // Nummer da, obwohl noch die alte Fassung lief – der Techniker meldete Fehler gegen eine
+   // Version, die er gar nicht benutzte. Ein erkanntes Update wird jetzt stattdessen als
+   // Hinweis ausgegeben.
   function initAppVersion() {
     renderAppVersion();
     if (!('serviceWorker' in navigator)) return;
-    const ask = () => {
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'VERSION') {
+        const neu = String(e.data.version || '').replace('nfk-doku-', '');
+        if (neu && neu !== APP_VERSION) {
+          const el = $('#appVersion');
+          if (el) el.textContent = 'Version ' + APP_VERSION + ' – Update ' + neu + ' bereit';
+          toast('Neue Version ' + neu + ' geladen – App einmal schließen und neu öffnen.', 6000);
+        }
+      }
+    });
+    const frage = () => {
       if (navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage('GET_VERSION');
     };
-    navigator.serviceWorker.addEventListener('message', (e) => {
-      if (e.data && e.data.type === 'VERSION') renderAppVersion(e.data.version);
-    });
-    navigator.serviceWorker.addEventListener('controllerchange', ask);
-    ask();
+    navigator.serviceWorker.addEventListener('controllerchange', frage);
+    frage();
   }
 
   async function init() {
@@ -1131,7 +1308,18 @@ const App = (() => {
   async function adoptJob(job) {
     currentJob = job;
     await DB.setCurrentJobId(job.id);
-    catalogNames = null; // Vorlagen-Dropdown für diesen Auftrag neu aufbauen
+    resetJobState();
+  }
+
+  // Alles, was sich auf den vorherigen Auftrag bezog. Ohne das zeigte das Bautagebuch beim
+  // Auftragswechsel weiter das Datum des alten Auftrags, und der Baum behielt dessen
+  // aufgeklappte Ordner.
+  function resetJobState() {
+    catalogNames = null;   // Vorlagen-Dropdown für diesen Auftrag neu aufbauen
+    diaryDate = null;
+    currentNode = null;
+    expandedObers.clear();
+    expandedUnters.clear();
   }
 
   // Gemeinsamer Einstieg für BEIDE Import-Knöpfe. Erkannt wird am Inhalt, nicht an der
@@ -1145,22 +1333,85 @@ const App = (() => {
     toast('Lese Datei…');
     let zip = null, art = null;
     try {
-      zip = await JSZip.loadAsync(await file.arrayBuffer());
+      // Direkt aus dem File lesen: ein zusätzliches arrayBuffer() hielte die komplette
+      // ZIP (auf der Baustelle schnell einige hundert MB) ein zweites Mal im Speicher.
+      zip = await JSZip.loadAsync(file);
+      // Wurde die ZIP unterwegs neu gepackt, liegt ihr Inhalt in einem Unterordner –
+      // Merge.zipInhalt findet das echte Wurzelverzeichnis (dieselbe Logik wie beim Import).
+      const inhalt = Merge.zipInhalt(zip).inhalt;
       if (zip.file('xl/workbook.xml')) art = 'xlsx';
-      else if (zip.file('manifest.json') || zip.file('uebersicht.csv')
-        || Object.keys(zip.files).some((p) => /^[^/]+\.xlsx$/i.test(p) && !zip.files[p].dir)) art = 'zip';
+      else if (inhalt.file('manifest.json') || inhalt.file('uebersicht.csv')
+        || inhalt.filter((rel, f) => !f.dir && /^[^/]+\.xlsx$/i.test(rel)).length) art = 'zip';
     } catch (err) {
       console.warn('Datei ist weder .xlsx noch .zip:', err);
     }
     if (art === 'xlsx') return handoverImport(file);
-    if (art === 'zip') return mergeContribution(zip);
+    if (art === 'zip') return mergeContribution(zip, file.name);
     toast('Unbekannte Datei – erwartet wird eine Übergabe-Datei (.xlsx) oder eine Bilddoku-ZIP.');
   }
 
-  async function mergeContribution(zip) {
+  // Wird von Merge/Handover aufgerufen, sobald der Kopf des Pakets gelesen ist und bevor
+  // etwas geschrieben wird. Liefert null (= Import abbrechen) oder die Stammdaten-Felder,
+  // die aus dem Paket übernommen werden sollen.
+  async function pruefeHerkunft(paket, ziel, info) {
+    const neuerAuftrag = !!(info && info.neu);
+    const eigen = (ziel && ziel.header) || null;
+    if (!eigen) return { kopfFelder: [] };   // nichts zu vergleichen
+
+    // 1) Gehört das Paket zu dieser Baustelle? Maßgeblich sind allein die vier Ziffern –
+    //    die Schreibweise drumherum („LI7423", „DE7423", „7423 München") wird frei getippt.
+    const nrEigen = filialNr(eigen.filiale), nrPaket = paket.filialNr;
+    const nummerWeicthAb = !!(nrEigen && nrPaket && nrEigen !== nrPaket);
+    if (nummerWeicthAb) {
+      const folge = neuerAuftrag
+        ? 'Beim Fortfahren wird ein neuer Auftrag für diese Filiale angelegt.'
+        : 'Beim Fortfahren landen fremde Bilder in dieser Dokumentation.';
+      // Die Bezeichnung des Pakets nur zeigen, wenn es eine gibt: bei alten ZIPs ohne
+      // Kopfdaten stammt die Nummer aus den Bild-Dateinamen, ein Klartext fehlt dann.
+      const paketZeile = paket.filiale
+        ? `Paket: „${escHtml(paket.filiale)}"`
+        : 'Im Paket steht nur die Nummer (aus den Bilddateien gelesen).';
+      const ok = await openConfirm('Andere Filiale!',
+        `<p>Dieses Paket gehört zu Filiale <b>${escHtml(nrPaket)}</b>,
+            dieser Auftrag ist Filiale <b>${escHtml(nrEigen)}</b>.</p>
+         <p>Dein Auftrag: „${escHtml(eigen.filiale || '')}"<br>${paketZeile}</p>
+         <p class="hint">Wahrscheinlich wurde das falsche Paket gewählt. ${escHtml(folge)}</p>`,
+        'Trotzdem importieren', true);
+      if (!ok) return null;
+    }
+    // Bei einem neuen Auftrag kommen die Stammdaten ohnehin vollständig mit – nichts zu wählen.
+    if (neuerAuftrag) return { kopfFelder: [] };
+
+    // 2) Gleiche Filiale, aber abweichend geschriebene Stammdaten: gegenüberstellen und
+    //    Feld für Feld entscheiden lassen. Ist das eigene Feld leer, ist das Paket vorgewählt.
+    const felder = [];
+    for (const [name, label] of [['filiale', 'Bauvorhaben / Filiale'], ['ort', 'Ort']]) {
+      const meins = String(eigen[name] || '').trim();
+      const ihres = String(paket[name] || '').trim();
+      if (ihres && meins !== ihres) {
+        felder.push({ name, label, eigen: meins, paket: ihres, vorauswahl: meins ? 'eigen' : 'paket' });
+      }
+    }
+    if (!felder.length) return { kopfFelder: [] };
+
+    const alleLeer = felder.every((f) => !f.eigen);
+    const einleitung = (nummerWeicthAb
+      ? 'Die Angaben im Paket lauten anders als in deinem Auftrag.'
+      : alleLeer
+        ? 'Dein Auftrag hat dazu noch keine Angaben.'
+        : 'Gleiche Filiale, aber unterschiedlich geschriebene Angaben.')
+      + ' Wähle je Zeile, was in deinem Auftrag stehen soll.';
+    const wahl = await openChoiceModal('Stammdaten weichen ab',
+      '<p class="hint">' + einleitung + '</p>',
+      felder, { ok: 'Übernehmen', cancel: 'Meine behalten' });
+    return { kopfFelder: wahl ? Object.keys(wahl).filter((k) => wahl[k] === 'paket') : [] };
+  }
+
+  async function mergeContribution(zip, dateiname) {
     toast('Führe Bilder zusammen…');
     try {
-      const r = await Merge.importContributionZip(zip);
+      const r = await Merge.importContributionZip(zip, { dateiname, pruefen: pruefeHerkunft });
+      if (r.abgebrochen) { toast('Import abgebrochen – nichts verändert.'); return; }
       await renderTree();
       await renderBackupReminder('#backupReminder');
       if (r.jobNeu || r.strukturUebernommen) {
@@ -1173,6 +1424,13 @@ const App = (() => {
       if (r.skipped) teile.push(`${r.skipped} bereits vorhanden`);
       if (r.addedNodes && r.addedNodes.length) teile.push(`${r.addedNodes.length} neue Position(en)`);
       if (r.unbekannt && !r.strukturUebernommen) teile.push(`${r.unbekannt} fremde Position(en)`);
+      // Fehlende Dateien MÜSSEN sichtbar sein: sonst hält der Techniker eine unvollständig
+      // übertragene ZIP für vollständig eingelesen.
+      if (r.missing) teile.push(`⚠ ${r.missing} Bild(er) fehlten im Archiv`);
+      if (r.kopfFelder && r.kopfFelder.length) {
+        teile.push('Stammdaten aktualisiert');
+        await loadStartView(); // Projektformular auf die neuen Werte bringen
+      }
       toast(teile.join(' · '), 4200);
     } catch (err) {
       console.error(err);
@@ -1183,7 +1441,8 @@ const App = (() => {
   async function handoverImport(file) {
     toast('Lese Übergabe-Datei…');
     try {
-      const job = await Handover.importXlsx(file);
+      const job = await Handover.importXlsx(file, { pruefen: pruefeHerkunft });
+      if (!job) { toast('Import abgebrochen – nichts verändert.'); return; }
       await adoptJob(job);
       show('view-start');
       await loadStartView();
@@ -1197,5 +1456,5 @@ const App = (() => {
   document.addEventListener('DOMContentLoaded', init);
 
   // Öffentlich für andere Module:
-  return { toast, openInfoModal, openFormModal, openConfirm, shareFile, show, getCurrentJob, saveCurrentJob, adoptJob };
+  return { toast, openInfoModal, openFormModal, openConfirm, shareFile, show, getCurrentJob, saveCurrentJob, adoptJob, filialNr, fehlerText };
 })();

@@ -25,9 +25,11 @@ const ExportZip = (() => {
     const enriched = await Overview.enrich(nodes);
     const project = (job && job.header) || {};
 
-    // Filialnummer (führende Ziffern aus „7265 Memmingen" -> „7265") als Präfix der Bildnamen.
-    const filMatch = String(project.filiale || '').match(/\d+/);
-    const filPrefix = filMatch ? filMatch[0] + '_' : '';
+    // Filialnummer als Präfix der Bildnamen. Vorrang hat die vierstellige Nummer
+    // (App.filialNr erkennt sie in jeder Schreibweise); nur wenn es keine gibt, greift
+    // wie bisher die erste Ziffernfolge.
+    const filNr = App.filialNr(project.filiale) || (String(project.filiale || '').match(/\d+/) || [])[0];
+    const filPrefix = filNr ? filNr + '_' : '';
 
     const zip = new JSZip();
 
@@ -74,7 +76,10 @@ const ExportZip = (() => {
     // einem Vorlagenwechsel). Ohne Sonderbehandlung fielen sie stillschweigend aus dem
     // Export: die Backup-Erinnerung zählte sie, der Export ignorierte sie – „Jetzt sichern"
     // meldete dann „Noch keine Bilder aufgenommen" und die Warnung ließ sich nie ausräumen.
-    totalPhotos += await addOrphanPhotos(zip, job, enriched, filPrefix, manifest, lines);
+    // Fotoliste EINMAL lesen und weiterreichen: addOrphanPhotos und addBehinderungPhotos
+    // holten sie sich bisher je selbst komplett neu.
+    const allePhotos = await DB.getAllPhotos(job.id);
+    totalPhotos += await addOrphanPhotos(zip, job, enriched, filPrefix, manifest, lines, allePhotos);
 
     const bilddokuPhotos = totalPhotos;
 
@@ -84,7 +89,7 @@ const ExportZip = (() => {
     // sonst erschienen sie in der Übersicht als Position. Wichtig ist auch der eigene
     // Manifest-Schlüssel: merge.js legt aus manifest.photos fehlende Positionen als
     // eigene Namen an, was hier eine Phantom-Position „Baubehinderung" erzeugen würde.
-    const behinderungPhotos = await addBehinderungPhotos(zip, job, filPrefix, manifest);
+    const behinderungPhotos = await addBehinderungPhotos(zip, job, filPrefix, manifest, allePhotos);
     totalPhotos += behinderungPhotos;
 
     zip.file('uebersicht.csv', '﻿' + lines.join('\r\n'));
@@ -108,19 +113,21 @@ const ExportZip = (() => {
 
     const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
     const fname = buildZipName(project);
-    await App.shareFile(blob, fname, 'application/zip',
+    // geteilt = die Datei hat das Gerät verlassen. doBackupNow entscheidet daran, ob der
+    // Auftrag als gesichert gilt (siehe App.shareFile).
+    const geteilt = await App.shareFile(blob, fname, 'application/zip',
       `Bilddoku ${project.filiale || ''}`.trim());
-    return { totalPhotos, bilddokuPhotos, behinderungPhotos, fname };
+    return { totalPhotos, bilddokuPhotos, behinderungPhotos, fname, geteilt };
   }
 
   // Legt Bilddoku-Bilder ab, deren Position es in der aktuellen Struktur nicht mehr gibt,
   // im Ordner „Ohne Zuordnung/<Ober>/[<Unter>/]". Sie bleiben damit gesichert und
   // wandern beim Zusammenführen über manifest.photos wieder an ihre ursprüngliche
   // Position zurück. Liefert die Anzahl der abgelegten Bilder.
-  async function addOrphanPhotos(zip, job, enriched, filPrefix, manifest, lines) {
+  async function addOrphanPhotos(zip, job, enriched, filPrefix, manifest, lines, allePhotos) {
     const bekannt = new Set(enriched.map((n) => n.key));
     const byNode = new Map();
-    for (const p of await DB.getAllPhotos(job.id)) {
+    for (const p of allePhotos) {
       if (!DB.isBilddokuPhoto(p)) continue;   // Vorprüfung/Behinderung: eigene Wege
       if (bekannt.has(p.nodeKey)) continue;   // regulär bereits exportiert
       if (!byNode.has(p.nodeKey)) byNode.set(p.nodeKey, []);
@@ -162,9 +169,9 @@ const ExportZip = (() => {
   //   <Filialnr>_Baubehinderung_<NN>.jpg
   // Mehrere Anzeigen am selben Tag bekommen „(2)", „(3)" … angehängt, damit sich die
   // Pfade nicht überschreiben. Liefert die Anzahl der abgelegten Bilder.
-  async function addBehinderungPhotos(zip, job, filPrefix, manifest) {
+  async function addBehinderungPhotos(zip, job, filPrefix, manifest, allePhotos) {
     const NS = '__behinderung__';
-    const all = await DB.getAllPhotos(job.id);
+    const all = allePhotos;
     const byNode = new Map();
     for (const p of all) {
       if (typeof p.nodeKey !== 'string' || p.nodeKey.indexOf(NS) !== 0) continue;
@@ -218,8 +225,8 @@ const ExportZip = (() => {
   // und eindeutig benannt – die neueste ersetzt alle älteren, die man löschen kann.
   function buildZipName(project) {
     const clean = (s) => String(s || '').replace(/[\\/:*?"<>|]/g, '').trim();
-    const numMatch = clean(project.filiale).match(/\d+/);
-    const fil = (numMatch ? numMatch[0] : clean(project.filiale) || 'Projekt').replace(/\s+/g, '_');
+    const nr = App.filialNr(project.filiale) || (clean(project.filiale).match(/\d+/) || [])[0];
+    const fil = (nr || clean(project.filiale) || 'Projekt').replace(/\s+/g, '_');
     const ort = clean(project.ort).replace(/\s+/g, '_');
     const d = new Date().toISOString().slice(0, 10).replace(/-/g, '_');
     const parts = ['Bilddoku', 'LI' + fil];

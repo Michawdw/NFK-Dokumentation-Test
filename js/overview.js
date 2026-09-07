@@ -12,10 +12,12 @@ const Overview = (() => {
   // Ist = übernommene Vor-Anzahl (priorCount) + lokal aufgenommene Bilder.
   async function enrich(nodes) {
     const job = App.getCurrentJob();
-    const counts = await Promise.all(nodes.map((n) => DB.countPhotos(job.id, n.key)));
-    return nodes.map((n, i) => {
+    // Eine einzige Abfrage für alle Positionen (siehe DB.countPhotosByNode) statt einer
+    // Transaktion je Position – das lief bei jedem Auf-/Zuklappen im Baum erneut.
+    const counts = await DB.countPhotosByNode(job.id);
+    return nodes.map((n) => {
       const prior = (job.priorCounts && job.priorCounts[n.key]) || 0;
-      const local = counts[i];
+      const local = counts.get(n.key) || 0;
       const ist = prior + local;
       return { ...n, ist, prior, local, done: ist >= n.pflicht, skipped: Structure.isSkipped(n, job) };
     });

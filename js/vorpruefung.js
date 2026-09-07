@@ -77,6 +77,14 @@ const Vorpruefung = (() => {
     saveTimer = setTimeout(() => { App.saveCurrentJob(); }, 500);
   }
 
+  // Sofort speichern statt auf den Timer zu warten. Wird beim Verlassen der Ansicht, beim
+  // Auftragswechsel und beim Wegwischen der App gerufen: sonst ginge die letzte Eingabe
+  // verloren, oder der Timer schriebe sie nach einem Auftragswechsel in den falschen Auftrag.
+  async function flush() {
+    clearTimeout(saveTimer);
+    try { await App.saveCurrentJob(); } catch (e) { console.warn('Vorprüfung sichern fehlgeschlagen', e); }
+  }
+
   // ---- versteckte File-Inputs (Kamera / Galerie) ----
   function setupInputs() {
     if (cameraInput) return;
@@ -110,7 +118,7 @@ const Vorpruefung = (() => {
         });
       } catch (err) {
         console.error(err);
-        App.toast('Foto konnte nicht hinzugefügt werden: ' + (err.message || err));
+        App.toast('Foto konnte nicht hinzugefügt werden: ' + App.fehlerText(err), 5000);
       }
     }
     await renderList();
@@ -316,5 +324,5 @@ const Vorpruefung = (() => {
     if (protoBtn) protoBtn.onclick = makeProtokoll;
   }
 
-  return { POINTS, init, enter, isIncomplete, answeredCount, flagMissing };
+  return { POINTS, init, enter, isIncomplete, answeredCount, flagMissing, flush };
 })();

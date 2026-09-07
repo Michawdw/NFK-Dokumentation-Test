@@ -17,7 +17,10 @@ const Merge = (() => {
     return String(s || '')
       .toLowerCase()
       .replace(/^\s*\d+[_\-. ]+/, '')      // führendes Zähl-Präfix: „01_", „02 - ", Filialnr.
-      .replace(/[^a-z0-9äöüß]+/g, ' ')     // Trenner vereinheitlichen (siehe unten)
+      // Umlaute und ihre Umschreibungen gleichsetzen: wurde eine Vorlage einmal ohne
+      // Umlaute gepflegt, ist „Sozialraeume" dieselbe Position wie „Sozialräume".
+      .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+      .replace(/[^a-z0-9]+/g, ' ')         // Trenner vereinheitlichen (siehe unten)
       .trim();
   }
   // Warum alle Sonderzeichen zu Leerzeichen: der ZIP-Export schreibt Ordnernamen durch
@@ -67,6 +70,49 @@ const Merge = (() => {
     return index.byName.get(bn) || null;
   }
 
+  // ------------------------------------------------------- Wurzelordner in der ZIP
+  // Wird eine Bilddoku-ZIP unterwegs einmal entpackt und neu gepackt (Windows „Alle
+  // extrahieren", viele Datei-Manager und Cloud-Apps machen das beim Weiterleiten),
+  // steckt der gesamte Inhalt danach in EINEM Ordner mit dem Namen der ZIP-Datei.
+  // Folge ohne Behandlung: manifest.json/uebersicht.csv/Übergabe-.xlsx werden nicht
+  // gefunden, und der Ordner-Fallback liest den ZIP-Namen als Oberordner – alle Bilder
+  // landen in einer einzigen neuen Position „Bilddoku_LI…" statt in der Struktur.
+  // Erkennungsmerkmal ist eine der drei Dateien: nur wenn sie eine Ebene tiefer liegt,
+  // wird gekürzt. Ein echter Oberordner („Kassenzone") wird dadurch nie abgeschnitten.
+  function hatKennung(z) {
+    return !!(z.file('manifest.json') || z.file('uebersicht.csv') || wurzelXlsx(z).length);
+  }
+
+  // Alle .xlsx direkt im (Unter-)Wurzelverzeichnis – die beigelegte Übergabe-Mappe.
+  function wurzelXlsx(z) {
+    return z.filter((rel, f) => !f.dir && /^[^/]+\.xlsx$/i.test(rel));
+  }
+
+  // Einziger gemeinsamer Unterordner, oder null (mehrere Ordner / Dateien liegen direkt drin).
+  function einzigerUnterordner(z) {
+    let name = null, mehrdeutig = false;
+    z.forEach((rel, f) => {
+      if (mehrdeutig || f.dir) return;
+      const i = rel.indexOf('/');
+      if (i < 0) { mehrdeutig = true; return; }
+      const erster = rel.slice(0, i);
+      if (name === null) name = erster; else if (name !== erster) mehrdeutig = true;
+    });
+    return mehrdeutig ? null : name;
+  }
+
+  function zipInhalt(zip) {
+    let inhalt = zip, wurzel = '';
+    for (let tiefe = 0; tiefe < 5 && !hatKennung(inhalt); tiefe++) {
+      const ordner = einzigerUnterordner(inhalt);
+      if (!ordner) break;
+      inhalt = inhalt.folder(ordner);
+      wurzel = wurzel ? wurzel + '/' + ordner : ordner;
+    }
+    // Ohne Kennung nichts kürzen – lieber der bisherige Weg als Bilder ohne Oberordner.
+    return hatKennung(inhalt) ? { inhalt, wurzel } : { inhalt: zip, wurzel: '' };
+  }
+
   // Nachschlagetabelle „so schreibt der Export diese Position" -> echter Knoten.
   // Nötig, weil der Export den Pfad zweifach verändert: Ordner-/Dateinamen werden über
   // safePart() bereinigt (aus „Allgemein / CCTV" wird „Allgemein _ CCTV"), und dem
@@ -81,6 +127,18 @@ const Merge = (() => {
       idx.set(folder + '/' + sp(n.bildname), n);
     }
     return idx;
+  }
+
+  // Kennung eines ZIP-Eintrags aus Prüfsumme und Größe. Gebraucht für die srcId in ZIPs
+  // OHNE manifest.json: dort war die srcId früher allein der Pfad – und zwei Kollegen
+  // derselben Filiale erzeugen für dieselbe Position exakt denselben Pfad
+  // ("Kassenzone/7265_Kassen Totale_01.jpg"). Beim zweiten Import hielt der Duplikatschutz
+  // die fremden Bilder für bereits vorhanden und verwarf sie still. Mit Prüfsumme dedupt
+  // ein echter Re-Import weiterhin, verschiedene Bilder kollidieren aber nicht mehr.
+  function legacySrcId(path, file) {
+    const d = file && file._data;
+    const k = (d && d.crc32 != null) ? d.crc32 + '_' + (d.uncompressedSize || 0) : null;
+    return 'legacy:' + (k ? k + ':' : '') + path; // ohne Prüfsumme wie bisher nur der Pfad
   }
 
   // Liest die Foto-Liste aus manifest.json; fällt sonst auf die Ordnerstruktur zurück.
@@ -116,7 +174,7 @@ const Merge = (() => {
       const node = idx.get(dir + '/' + roh) || idx.get(dir + '/' + roh.replace(/^\d+_/, ''));
       if (node) {
         entries.push({
-          srcId: 'legacy:' + path,
+          srcId: legacySrcId(path, file),
           nodeKey: node.key,
           ober: node.ober, unter: node.unter || null, bildname: node.bildname,
           pflicht: node.pflicht || 1, seq, createdAt: null, path,
@@ -129,7 +187,7 @@ const Merge = (() => {
       const ober = parts[0] || 'Allgemein';
       const unter = parts.length > 1 ? parts[1] : null;
       entries.push({
-        srcId: 'legacy:' + path, // stabil pro ZIP-Pfad -> Re-Import dedupt
+        srcId: legacySrcId(path, file), // stabil pro Bildinhalt -> Re-Import dedupt
         nodeKey: Structure.makeKey(ober, unter, roh),
         ober, unter, bildname: roh, pflicht: 1, seq, createdAt: null, path,
       });
@@ -156,19 +214,57 @@ const Merge = (() => {
     return offen.size;
   }
 
+  // Vierstellige Filialnummer aus den Bild-Dateinamen im Paket („7423_Kassen Totale_01.jpg").
+  // Zweite Quelle für ganz alte ZIPs, die außer der uebersicht.csv keine Kopfdaten haben.
+  // Mehrheitswert, damit ein einzelner Ausreißer (fremdes Bild von Hand dazugelegt) nicht
+  // die ganze Prüfung kippt.
+  function filialNrAusBildern(zip) {
+    const zaehl = new Map();
+    zip.forEach((rel, f) => {
+      if (f.dir || !/\.jpe?g$/i.test(rel)) return;
+      const m = String(rel).split('/').pop().match(/^(\d{4})(?!\d)/);
+      if (m) zaehl.set(m[1], (zaehl.get(m[1]) || 0) + 1);
+    });
+    let best = null, max = 0;
+    for (const [nr, anzahl] of zaehl) if (anzahl > max) { max = anzahl; best = nr; }
+    return best;
+  }
+
   // Nimmt eine Datei ODER ein bereits geöffnetes JSZip entgegen: app.js muss die ZIP
   // zur Typerkennung ohnehin öffnen und soll sie nicht ein zweites Mal einlesen müssen
   // (auf der Baustelle sind das schnell einige hundert MB).
-  async function importContributionZip(fileOderZip) {
-    const zip = (fileOderZip && typeof fileOderZip.file === 'function')
+  //   opts.dateiname  Name der ZIP – letzte Quelle für die Filialnummer
+  //   opts.pruefen    (paket, zielAuftrag) => null (abbrechen) | { kopfFelder: [...] }.
+  //                   Wird aufgerufen, sobald der Kopf des Pakets gelesen ist und BEVOR
+  //                   irgendetwas geschrieben wird.
+  async function importContributionZip(fileOderZip, opts) {
+    const o = opts || {};
+    const roh = (fileOderZip && typeof fileOderZip.file === 'function')
       ? fileOderZip
       : await JSZip.loadAsync(await fileOderZip.arrayBuffer());
+    // Falls die ZIP unterwegs neu gepackt wurde: auf das echte Wurzelverzeichnis gehen.
+    const { inhalt: zip, wurzel } = zipInhalt(roh);
     // Übergabestand der ZIP: beigelegte Übergabe-.xlsx, sonst uebersicht.csv (+ manifest.json
     // für die Kopfdaten). Null nur bei ZIPs, die keine dieser Dateien enthalten.
     const uebergabe = await Handover.readFromZip(zip);
 
     let job = App.getCurrentJob();
     let jobNeu = false, strukturUebernommen = false;
+    let kopfFelder = [];
+
+    // Gehört das Paket überhaupt zu dieser Baustelle? Prüfen, BEVOR etwas geschrieben wird –
+    // ein Abbruch muss den Auftrag unangetastet lassen. Zielauftrag ist der aktuelle; wird
+    // gleich einer neu angelegt, gibt es nichts zu vergleichen.
+    if (o.pruefen) {
+      const kv = (uebergabe && uebergabe.kv) || {};
+      const antwort = await o.pruefen({
+        filiale: kv.filiale || '',
+        ort: kv.ort || '',
+        filialNr: App.filialNr(kv.filiale) || filialNrAusBildern(zip) || App.filialNr(o.dateiname),
+      }, job || null);
+      if (!antwort) return { abgebrochen: true };
+      kopfFelder = antwort.kopfFelder || [];
+    }
 
     // Kein Auftrag aktiv: aus der ZIP einen anlegen – es gibt nichts zu überschreiben,
     // also auch nichts zu fragen.
@@ -180,6 +276,20 @@ const Merge = (() => {
       await App.adoptJob(r.job);
       job = r.job;
       jobNeu = strukturUebernommen = true;
+    }
+
+    // Vom Nutzer freigegebene Stammdaten übernehmen (Feld für Feld entschieden).
+    if (kopfFelder.length && uebergabe) {
+      const h = job.header || (job.header = {});
+      const alteFiliale = String(h.filiale || '');
+      for (const feld of kopfFelder) h[feld] = uebergabe.kv[feld] || '';
+      // Auftragsname zieht nur mit, wenn er nichts Eigenes war – sonst hieße ein bewusst
+      // vergebener Name plötzlich anders. Gleiche Regel wie beim Speichern des Projektkopfs.
+      if (kopfFelder.indexOf('filiale') !== -1
+          && (!job.name || job.name === alteFiliale || /^Auftrag \d+$/.test(job.name))) {
+        job.name = h.filiale || job.name;
+      }
+      await DB.saveJob(job);
     }
 
     const standVorher = await eigenerStand(job);
@@ -268,6 +378,12 @@ const Merge = (() => {
       zielKeys.add(key);
       if (existingSrc.has(srcId)) { skipped++; continue; }
 
+      // Blob ZUERST holen: fehlt die Datei im Archiv (abgebrochene Kopie, gekürztes
+      // Weiterleiten), darf keine leere Position "von Kollege" im Baum zurückbleiben.
+      const zf = zip.file(e.path);
+      if (!zf) { missing++; continue; }
+      const blob = await zf.async('blob');
+
       if (!node && !knownKeys.has(key)) {
         const neu = {
           key, ober: e.ober || 'Allgemein', unter: e.unter || null,
@@ -280,11 +396,6 @@ const Merge = (() => {
         index.exact.set(key, neu);
         addedNodes.push(e.bildname);
       }
-
-      // Blob aus ZIP holen.
-      const zf = zip.file(e.path);
-      if (!zf) { missing++; continue; }
-      const blob = await zf.async('blob');
 
       // Fortlaufende Nummer bestimmen: an den eigenen Stand vor dem Import anhängen.
       // Bewusst NICHT an job.priorCounts – der kann den Stand des Kollegen enthalten,
@@ -299,6 +410,10 @@ const Merge = (() => {
         seq,
         blob,
         createdAt: e.createdAt || Date.now(),
+        // Wann das Bild auf DIESES Gerät kam. createdAt trägt die Aufnahmezeit des Kollegen
+        // und liegt oft vor der eigenen letzten Sicherung – ohne importedAt meldete die
+        // Backup-Erinnerung direkt nach dem Merge "alles gesichert".
+        importedAt: Date.now(),
         srcId, // Original-srcId behalten -> künftiger Re-Import dedupt
       });
       existingSrc.add(srcId);
@@ -320,8 +435,8 @@ const Merge = (() => {
     }
 
     await App.saveCurrentJob();
-    return { added, skipped, missing, addedNodes, unbekannt, strukturUebernommen, jobNeu };
+    return { added, skipped, missing, addedNodes, unbekannt, strukturUebernommen, jobNeu, wurzel, kopfFelder };
   }
 
-  return { importContributionZip };
+  return { importContributionZip, zipInhalt };
 })();

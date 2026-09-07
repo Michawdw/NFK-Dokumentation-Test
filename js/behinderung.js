@@ -149,7 +149,7 @@ const Behinderung = (() => {
         });
       } catch (err) {
         console.error(err);
-        App.toast('Foto konnte nicht hinzugefügt werden: ' + (err.message || err));
+        App.toast('Foto konnte nicht hinzugefügt werden: ' + App.fehlerText(err), 5000);
       }
     }
     await renderThumbs();

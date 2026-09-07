@@ -25,7 +25,33 @@ const Docx = (() => {
   let logoBlobCache = null; // Logo nur einmal je Sitzung laden
 
   // ---- XML-Helfer ----
-  const escapeXml = (s) => String(s == null ? '' : s)
+  // Entfernt Zeichen, die XML 1.0 nicht zulässt. Ohne diesen Schritt macht ein einziges
+  // Steuerzeichen die fertige Datei unlesbar („Die Datei ist beschädigt"): Shift+Enter in
+  // Word/Outlook erzeugt U+000B, und dieses Zeichen überlebt Copy&Paste in die Freitextfelder
+  // (Tätigkeiten, Behinderungsgrund, Bildunterschrift). Betrifft .docx wie .xlsx, deshalb
+  // wird die Funktion auch von bautagebuch.js genutzt.
+  // Tab, Zeilenumbruch und Wagenrücklauf bleiben erlaubt; gültige Emoji-Paare bleiben
+  // erhalten, einzelne Surrogat-Hälften werden verworfen.
+  function xmlSauber(s) {
+    const t = String(s == null ? '' : s);
+    let out = '';
+    for (let i = 0; i < t.length; i++) {
+      const c = t.charCodeAt(i);
+      if (c >= 0xD800 && c <= 0xDBFF) {          // erste Hälfte eines Paares
+        const n = t.charCodeAt(i + 1);
+        if (n >= 0xDC00 && n <= 0xDFFF) { out += t[i] + t[i + 1]; i++; }
+        continue;                                 // ohne Partner: verwerfen
+      }
+      if (c >= 0xDC00 && c <= 0xDFFF) continue;   // verwaiste zweite Hälfte
+      if (c === 0x09 || c === 0x0A || c === 0x0D) { out += t[i]; continue; }
+      if (c < 0x20) continue;                     // übrige Steuerzeichen, u. a. U+000B
+      if (c === 0xFFFE || c === 0xFFFF) continue;
+      out += t[i];
+    }
+    return out;
+  }
+
+  const escapeXml = (s) => xmlSauber(s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const escapeAttr = (s) => escapeXml(s).replace(/"/g, '&quot;');
 
@@ -315,8 +341,8 @@ const Docx = (() => {
   function buildFileName(prefix, model, ext) {
     const clean = (s) => String(s || '').replace(/[\\/:*?"<>|]/g, '').trim();
     const filRaw = clean(model.filiale);
-    const numMatch = filRaw.match(/\d+/);
-    const fil = (numMatch ? numMatch[0] : filRaw || 'Projekt').replace(/\s+/g, '_');
+    const nr = App.filialNr(filRaw) || (filRaw.match(/\d+/) || [])[0];
+    const fil = (nr || filRaw || 'Projekt').replace(/\s+/g, '_');
     const ort = clean(model.ort).replace(/\s+/g, '_');
     const d = (model.datum || new Date().toISOString().slice(0, 10)).replace(/-/g, '_');
     const parts = [prefix, 'LI' + fil];
@@ -327,7 +353,7 @@ const Docx = (() => {
 
   return {
     MIME, EMU_PER_CM, MAX_W_EMU,
-    create, escapeXml, escapeAttr, fmtDate, buildFileName,
+    create, escapeXml, escapeAttr, xmlSauber, fmtDate, buildFileName,
     pText, pBold, pEmpty, pHead, pTitle, pRight, pSmall, pTight, pPageBreak,
   };
 })();

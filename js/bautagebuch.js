@@ -16,8 +16,12 @@ const Bautagebuch = (() => {
   const MAX_ROWS = 5; // Techniker-Zeilen 8..12
 
   // ---- Hilfsfunktionen ----
+  // Docx.xmlSauber entfernt Zeichen, die XML 1.0 nicht zulässt (z. B. U+000B aus einem
+  // Shift+Enter in Word). Ohne diesen Schritt öffnet Excel die fertige Datei nicht mehr:
+  // „Die Datei ist beschädigt". Die Funktion liegt in docx.js, weil beide Erzeuger sie
+  // brauchen – dort steht auch die ausführliche Begründung.
   function escapeXml(s) {
-    return String(s == null ? '' : s)
+    return Docx.xmlSauber(s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
@@ -42,9 +46,15 @@ const Bautagebuch = (() => {
 
   // Ersetzt eine Zelle in der sheet-XML, behält den vorhandenen Stil (s="…") bei.
   // build() liefert { t?:string, inner:string } oder null für „leere Zelle".
-  function setCell(xml, ref, build) {
+  function setCell(xml, ref, build, fehlend) {
     const re = new RegExp('<c r="' + ref + '"([^>]*?)(?:/>|>[\\s\\S]*?</c>)');
     if (!re.test(xml)) {
+      // Bis v38 verschwand der Wert hier lautlos – der Techniker bekam ein unvollständiges
+      // Bautagebuch, ohne einen Hinweis zu sehen. Gemeldet wird nur, wenn dabei ein ECHTER
+      // Wert verlorengeht; ungenutzte Technikerzeilen lösen keinen Alarm aus.
+      // Hinweis für neue Vorlagen: Excel schreibt stilfreie Leerzellen gar nicht ins XML –
+      // jede Zielzelle muss also formatiert sein, sonst fehlt sie hier.
+      if (fehlend && build()) fehlend.push(ref);
       console.warn('Zelle nicht gefunden:', ref);
       return xml;
     }
@@ -65,32 +75,32 @@ const Bautagebuch = (() => {
   const num = (v) => () => (v == null ? null : { inner: `<v>${v}</v>` });
 
   // Befüllt die sheet-XML mit den Modelldaten.
-  function patchSheet(xml, model) {
+  function patchSheet(xml, model, fehlend) {
     // Projektkopf
-    xml = setCell(xml, 'G3', text(model.filiale));
-    xml = setCell(xml, 'E5', num(excelSerial(model.datum)));
-    xml = setCell(xml, 'E6', text(model.beauftragung || 'NFK Vollverkabelung'));
+    xml = setCell(xml, 'G3', text(model.filiale), fehlend);
+    xml = setCell(xml, 'E5', num(excelSerial(model.datum)), fehlend);
+    xml = setCell(xml, 'E6', text(model.beauftragung || 'NFK Vollverkabelung'), fehlend);
     xml = setCell(xml, 'G7', num(model.anzTechniker != null && model.anzTechniker !== ''
-      ? parseInt(model.anzTechniker, 10) : null));
+      ? parseInt(model.anzTechniker, 10) : null), fehlend);
 
     // Techniker-Tabelle Zeilen 8..12 (immer alle 5 setzen, ungenutzte leeren)
     for (let i = 0; i < MAX_ROWS; i++) {
       const row = 8 + i;
       const r = (model.rows && model.rows[i]) || {};
-      xml = setCell(xml, 'B' + row, text(r.name));
-      xml = setCell(xml, 'I' + row, num(timeFraction(r.start)));
-      xml = setCell(xml, 'K' + row, num(timeFraction(r.ende)));
-      xml = setCell(xml, 'M' + row, num(timeFraction(r.pause)));
-      xml = setCell(xml, 'O' + row, text(r.bemerkung));
+      xml = setCell(xml, 'B' + row, text(r.name), fehlend);
+      xml = setCell(xml, 'I' + row, num(timeFraction(r.start)), fehlend);
+      xml = setCell(xml, 'K' + row, num(timeFraction(r.ende)), fehlend);
+      xml = setCell(xml, 'M' + row, num(timeFraction(r.pause)), fehlend);
+      xml = setCell(xml, 'O' + row, text(r.bemerkung), fehlend);
     }
 
     // Textblöcke (mehrzeilig; wrapText ist im Zellstil hinterlegt)
-    xml = setCell(xml, 'E14', text(model.taetigkeiten));
-    xml = setCell(xml, 'E16', text(model.behinderungen));
-    xml = setCell(xml, 'E19', text(model.vorkommnisse));
+    xml = setCell(xml, 'E14', text(model.taetigkeiten), fehlend);
+    xml = setCell(xml, 'E16', text(model.behinderungen), fehlend);
+    xml = setCell(xml, 'E19', text(model.vorkommnisse), fehlend);
 
     // Fußzeile „Ort Datum"
-    xml = setCell(xml, 'B22', text(model.ortDatum));
+    xml = setCell(xml, 'B22', text(model.ortDatum), fehlend);
     return xml;
   }
 
@@ -104,7 +114,12 @@ const Bautagebuch = (() => {
     if (!sheetFile) throw new Error('Vorlage: Tabellenblatt nicht gefunden.');
 
     let xml = await sheetFile.async('string');
-    xml = patchSheet(xml, model);
+    const fehlend = [];
+    xml = patchSheet(xml, model, fehlend);
+    if (fehlend.length) {
+      throw new Error('Die Bautagebuch-Vorlage passt nicht zur App: die Zellen '
+        + fehlend.join(', ') + ' fehlen darin. Eingaben wären verlorengegangen.');
+    }
     zip.file(SHEET_PATH, xml);
 
     return zip.generateAsync({
@@ -122,8 +137,8 @@ const Bautagebuch = (() => {
     const clean = (s) => String(s || '').replace(/[\\/:*?"<>|]/g, '').trim();
     const filRaw = clean(model.filiale);
     const ort = clean(model.ort).replace(/\s+/g, '_');
-    const numMatch = filRaw.match(/\d+/);
-    const fil = (numMatch ? numMatch[0] : filRaw).replace(/\s+/g, '_');
+    const nr = App.filialNr(filRaw) || (filRaw.match(/\d+/) || [])[0];
+    const fil = (nr || filRaw).replace(/\s+/g, '_');
     const d = (model.datum || new Date().toISOString().slice(0, 10)).replace(/-/g, '_');
     const parts = ['Bautagebuch', 'LI' + fil];
     if (ort) parts.push(ort);

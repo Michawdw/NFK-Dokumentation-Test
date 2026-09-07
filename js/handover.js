@@ -34,10 +34,10 @@ const Handover = (() => {
   }
 
   async function enrichForJob(job, nodes) {
-    const counts = await Promise.all(nodes.map((n) => DB.countPhotos(job.id, n.key)));
-    return nodes.map((n, i) => {
+    const counts = await DB.countPhotosByNode(job.id);   // eine Abfrage statt einer je Position
+    return nodes.map((n) => {
       const prior = (job.priorCounts && job.priorCounts[n.key]) || 0;
-      const ist = prior + counts[i];
+      const ist = prior + (counts.get(n.key) || 0);
       return { n, ist, done: ist >= n.pflicht, skipped: Structure.isSkipped(n, job) };
     });
   }
@@ -45,8 +45,8 @@ const Handover = (() => {
   function buildName(job) {
     const h = job.header || {};
     const clean = (s) => String(s || '').replace(/[\\/:*?"<>|]/g, '').trim();
-    const numMatch = clean(h.filiale).match(/\d+/);
-    const fil = (numMatch ? numMatch[0] : clean(h.filiale)).replace(/\s+/g, '_');
+    const nr = App.filialNr(h.filiale) || (clean(h.filiale).match(/\d+/) || [])[0];
+    const fil = (nr || clean(h.filiale)).replace(/\s+/g, '_');
     const ort = clean(h.ort).replace(/\s+/g, '_');
     const d = (h.datum || new Date().toISOString().slice(0, 10)).replace(/-/g, '_');
     return ['Uebergabe', 'LI' + fil, ort, d].filter(Boolean).join('_').replace(/_+/g, '_') + '.xlsx';
@@ -78,6 +78,12 @@ const Handover = (() => {
     // Ganze Ordner auf „nicht benötigt": als JSON, weil Ordnernamen Kommas enthalten
     // dürfen. Ohne diese beiden Zeilen ließen sich nur einzelne Positionen zurückholen –
     // der Ordner-Knopf im Baum stünde beim Empfänger wieder auf „benötigt".
+    // Vorprüfung mitgeben: Ohne sie sperrt goGuard den Empfänger nach dem Import aus
+    // Bilddoku UND Bautagebuch aus, bis er alle Punkte erneut beantwortet – obwohl die
+    // Baustelle längst geprüft ist. Die Baubehinderungsanzeigen bleiben dagegen bewusst
+    // beim Ersteller: sie sind rechtsverbindliche Schreiben mit eigenem Absender; ihre
+    // Fotos liegen für den Innendienst im ZIP-Ordner „Baubehinderung/".
+    s1.addRow(['vorpruefung', JSON.stringify(job.vorpruefung || null)]);
     s1.addRow(['skippedObers', JSON.stringify(skip.obers || [])]);
     s1.addRow(['skippedUnters', JSON.stringify((skip.unters || []).map((k) => {
       const i = String(k).indexOf(Structure.SEP);
@@ -209,14 +215,15 @@ const Handover = (() => {
   async function readFromZip(zip) {
     let out = null;
 
-    const xlsxName = Object.keys(zip.files)
-      .filter((p) => /^[^/]+\.xlsx$/i.test(p) && !zip.files[p].dir)
-      .sort()[0];
-    if (xlsxName) {
+    // Über zip.filter statt zip.files: so funktioniert das auch, wenn merge.js einen
+    // Wurzelordner weggekürzt hat (neu gepackte ZIP) – zip ist dann eine Ordner-Sicht.
+    const mappen = zip.filter((rel, f) => !f.dir && /^[^/]+\.xlsx$/i.test(rel))
+      .sort((a, b) => a.name < b.name ? -1 : 1);
+    if (mappen.length) {
       try {
         await Structure.loadExcelJS();
         const wb = new ExcelJS.Workbook();
-        await wb.xlsx.load(await zip.file(xlsxName).async('arraybuffer'));
+        await wb.xlsx.load(await mappen[0].async('arraybuffer'));
         out = readFromWorkbook(wb);
       } catch (e) { console.warn('Übergabe-Excel in der ZIP unlesbar:', e); }
     }
@@ -281,7 +288,11 @@ const Handover = (() => {
       for (const r of rows) {
         const key = o.mapKey ? o.mapKey(r) : Structure.makeKey(r.ober, r.unter, r.bildname);
         if (!key) continue; // Position gibt es hier nicht – kein toter Zähler-Eintrag
-        job.priorCounts[key] = Math.max(r.ist, job.priorCounts[key] || 0);
+        // Nur echte Zähler speichern: sonst stünden nach jedem Import mehrere hundert
+        // Nullwerte im Auftrag (bei 370 Positionen gut 20 KB, die bei jedem Speichern
+        // mitgeschrieben werden) – ohne jede Wirkung, denn 0 ist der Standard.
+        const wert = Math.max(r.ist, job.priorCounts[key] || 0);
+        if (wert > 0) job.priorCounts[key] = wert; else delete job.priorCounts[key];
         if (istSkip(r)) skipNodes.push(key);
       }
       const alt = job.skipped || {};
@@ -307,7 +318,7 @@ const Handover = (() => {
       const node = { key, ober: r.ober, unter: r.unter, bildname: r.bildname, pflicht: r.pflicht };
       if (r.fremd) fremdNodes.push(Object.assign(node, { source: 'merge' }));
       else structure.push(Object.assign(node, { source: 'template' }));
-      priorCounts[key] = r.ist;
+      if (r.ist > 0) priorCounts[key] = r.ist; // Nullwerte wären wirkungslose Altlast
       if (istSkip(r)) skippedNodes.push(key);
     }
     if (structure.length === 0) throw new Error('Übergabe-Daten enthalten keine Positionen.');
@@ -320,17 +331,22 @@ const Handover = (() => {
     }
 
     const hAlt = job.header || {};
-    const nimm = (wert, alt) => (o.soft ? (alt || wert || '') : (wert || ''));
-    if (!o.soft || !job.name) job.name = kv.name || job.name;
-    job.header = {
-      filiale: nimm(kv.filiale, hAlt.filiale),
-      ort: nimm(kv.ort, hAlt.ort),
-      datum: nimm(kv.datum, hAlt.datum),
-      beauftragung: nimm(kv.beauftragung, hAlt.beauftragung) || 'NFK Vollverkabelung',
-      techniker: (o.soft && (hAlt.techniker || []).length)
-        ? hAlt.techniker
-        : (kv.techniker || '').split(',').map((t) => t.trim()).filter(Boolean),
-    };
+    if (o.soft) {
+      // Der ZIP-Import fasst den Projektkopf NICHT an: welche Stammdaten aus dem Paket
+      // übernommen werden, entscheidet der Nutzer vorher Feld für Feld in der
+      // Gegenüberstellung (siehe merge.js). Nur ein leerer Name wird ergänzt.
+      job.header = hAlt;
+      if (!job.name) job.name = kv.name || job.name;
+    } else {
+      job.name = kv.name || job.name;
+      job.header = {
+        filiale: kv.filiale || '',
+        ort: kv.ort || '',
+        datum: kv.datum || '',
+        beauftragung: kv.beauftragung || 'NFK Vollverkabelung',
+        techniker: (kv.techniker || '').split(',').map((t) => t.trim()).filter(Boolean),
+      };
+    }
 
     job.structure = structure;
     job.customNames = job.customNames || [];
@@ -379,6 +395,19 @@ const Handover = (() => {
     };
 
     // Die bisherige Angabe ist nach dem Strukturaustausch in jedem Fall überholt.
+    // Vorprüfung des Vorteams übernehmen – aber nur, wenn hier noch keine eigene
+    // beantwortet wurde: eine bereits ausgefüllte Vorprüfung darf ein Import nie
+    // überschreiben.
+    if (kv.vorpruefung) {
+      const eigeneOffen = !job.vorpruefung || Vorpruefung.isIncomplete(job);
+      if (eigeneOffen) {
+        try {
+          const v = JSON.parse(kv.vorpruefung);
+          if (v && v.items) job.vorpruefung = v;
+        } catch (e) { console.warn('Vorprüfung aus der Übergabe unlesbar:', e); }
+      }
+    }
+
     job.selectedTemplate = kv.vorlage || Structure.HANDOVER_LABEL;
 
     await DB.saveJob(job);
@@ -386,13 +415,30 @@ const Handover = (() => {
   }
 
   // Liest eine Übergabe-Datei und legt daraus einen Auftrag an / aktualisiert ihn.
-  async function importXlsx(file) {
+  //   opts.pruefen  (paket, zielAuftrag, info) => null (abbrechen) | { kopfFelder }
+  //                 Wird vor jedem Schreibzugriff aufgerufen (wie beim ZIP-Import).
+  async function importXlsx(file, opts) {
+    const o = opts || {};
     await Structure.loadExcelJS();
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(await file.arrayBuffer());
 
     const daten = readFromWorkbook(wb);
     if (!daten) throw new Error('Blatt „Uebersicht" fehlt – keine gültige Übergabe-Datei.');
+
+    if (o.pruefen) {
+      // Zielauftrag ist der Auftrag gleicher id – nur dessen Kopf wird überschrieben. Gibt es
+      // ihn hier nicht, entsteht ein NEUER Auftrag; dann kann nichts vermischt werden, die
+      // Filialnummer wird aber trotzdem gegen den offenen Auftrag geprüft, damit ein
+      // versehentlich gewähltes Paket auffällt.
+      const bestehend = daten.kv.id ? await DB.getJob(daten.kv.id) : null;
+      const antwort = await o.pruefen(
+        { filiale: daten.kv.filiale || '', ort: daten.kv.ort || '', filialNr: App.filialNr(daten.kv.filiale) },
+        bestehend || App.getCurrentJob() || null,
+        { neu: !bestehend });
+      if (!antwort) return null; // abgebrochen – es wurde nichts geschrieben
+    }
+
     const r = await applyHandoverData(daten.kv, daten.rows);
     return r.job;
   }

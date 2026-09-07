@@ -82,9 +82,20 @@ const Photos = (() => {
 
   // Komprimiert eine Bilddatei -> JPEG-Blob (ausgerichtet, max 2560px lange Kante).
   async function compress(file) {
-    const buffer = await file.arrayBuffer();
-    // Hat der Browser die EXIF-Drehung schon selbst erledigt, ist hier nichts mehr zu tun.
-    const orientation = (await browserAutoOrients()) ? 1 : readOrientation(buffer);
+    // Die Datei nur einlesen, wenn die Drehung wirklich selbst ermittelt werden muss:
+    // moderne Browser richten JPEGs beim Dekodieren bereits aus, dann wäre der komplette
+    // Puffer (Handy-Foto: 5-12 MB) umsonst im Speicher.
+    let orientation = 1;
+    if (!(await browserAutoOrients())) {
+      try {
+        orientation = readOrientation(await file.arrayBuffer());
+      } catch (e) {
+        // Abgeschnittenes/defektes JPEG: lieber ungedreht weiterverarbeiten als das Foto
+        // ganz zu verlieren.
+        console.warn('EXIF-Orientierung nicht lesbar, nutze 1:', e);
+        orientation = 1;
+      }
+    }
     const img = await loadImage(file);
 
     let w = img.naturalWidth, h = img.naturalHeight;
@@ -114,9 +125,17 @@ const Photos = (() => {
     ctx.drawImage(img, 0, 0, drawW, drawH);
     ctx.restore();
 
-    return await new Promise((resolve) =>
+    // toBlob liefert bei Speichermangel oder Canvas-Limit null. Ohne diese Prüfung würde
+    // ein Foto-Datensatz OHNE Bild gespeichert: die Position gälte als erledigt, ihre Zeile
+    // verschwände aus dem Baum (createObjectURL(null) wirft) und der ZIP-Export erzeugte
+    // eine 0-Byte-Datei – eine unsichtbare Lücke in der Dokumentation.
+    const blob = await new Promise((resolve) =>
       canvas.toBlob((b) => resolve(b), 'image/jpeg', QUALITY)
     );
+    if (!blob || !blob.size) {
+      throw new Error('Bild konnte nicht komprimiert werden (evtl. zu wenig Speicher).');
+    }
+    return blob;
   }
 
   // Verarbeitet eine Auswahl und speichert sie dem Knoten zugeordnet (append-only).
@@ -151,11 +170,9 @@ const Photos = (() => {
     await DB.renumberNode(job.id, nodeKey, prior);
   }
 
-  function fileName(node, seq) {
-    const nn = String(seq).padStart(2, '0');
-    return `${node.bildname}_${nn}.jpg`;
-  }
-
-  return { compress, addToNode, deleteFromNode, fileName, readOrientation,
+  // fileName() gab es hier bis v38 zusätzlich – ungenutzt und ohne das Filialnummern-
+  // Präfix, das der Export voranstellt. Entfernt, damit niemand versehentlich damit
+  // Dateinamen baut. Maßgeblich ist export-zip.js.
+  return { compress, addToNode, deleteFromNode, readOrientation,
            browserAutoOrients, MAX_EDGE, QUALITY };
 })();
