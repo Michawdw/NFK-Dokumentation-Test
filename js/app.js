@@ -345,7 +345,7 @@ const App = (() => {
     const f = $('#projectForm');
     f.filiale.value = h.filiale || '';
     f.ort.value = h.ort || '';
-    f.datum.value = h.datum || new Date().toISOString().slice(0, 10);
+    f.datum.value = h.datum || Datum.heute();
     f.beauftragung.value = h.beauftragung || 'NFK Vollverkabelung';
     renderVpStatus();
     await renderBackupReminder('#backupReminderStart');
@@ -974,17 +974,31 @@ const App = (() => {
   // ------------------------------------------------------- Bautagebuch-View
   let diaryDate = null;
   let diaryAutoSaveAktiv = false;
+  // true, solange das Datum von der App gesetzt wurde („heute"). Wählt der Techniker im
+  // Archiv oder im Datumsfeld einen anderen Tag, steht es auf false – dann darf ihm die
+  // App den Tag nicht unter den Händen wegschieben (siehe Mitternachtswechsel unten).
+  let diaryDatumAutomatisch = true;
+
+  // Beim Öffnen der Ansicht immer auf den heutigen Tag stellen.
+  // Bis v39 stand hier das Auftragsdatum (`h.datum`), also der Tag, an dem der Auftrag
+  // angelegt wurde. Am zweiten Baustellentag öffnete sich damit der ERSTE Tag samt seiner
+  // gespeicherten Texte – und das Auto-Speichern schrieb die neuen Eingaben in den alten
+  // Tag hinein. Frühere Tage erreicht man weiterhin über das Archiv oder das Datumsfeld.
+  function diaryAufHeute() {
+    diaryDate = Datum.heute();
+    diaryDatumAutomatisch = true;
+  }
 
   async function initDiaryView() {
     const f = $('#diaryForm');
-    const h = (currentJob && currentJob.header) || {};
-    if (!diaryDate) diaryDate = h.datum || new Date().toISOString().slice(0, 10);
+    diaryAufHeute();
     f.datum.value = diaryDate;
     await loadDiaryForDate(diaryDate);
     await renderDiaryArchive();
     f.datum.onchange = async () => {
       await flushDiary();                 // alten Tag sichern, bevor das Formular umschaltet
       diaryDate = f.datum.value;
+      diaryDatumAutomatisch = (diaryDate === Datum.heute());
       await loadDiaryForDate(diaryDate);
       await renderDiaryArchive();
     };
@@ -1024,6 +1038,7 @@ const App = (() => {
       div.querySelector('.da-main').onclick = async () => {
         await flushDiary();            // aktuellen Tag sichern, bevor ein anderer geladen wird
         diaryDate = day.datum;
+        diaryDatumAutomatisch = (diaryDate === Datum.heute());
         $('#diaryForm').datum.value = day.datum;
         await loadDiaryForDate(day.datum);
         await renderDiaryArchive();
@@ -1196,7 +1211,21 @@ const App = (() => {
     });
     // Android friert die App beim Wegwischen ein oder beendet sie – vorher noch sichern.
     const alleSichern = () => { flushDiary(); Vorpruefung.flush(); };
-    document.addEventListener('visibilitychange', () => { if (document.hidden) alleSichern(); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { alleSichern(); return; }
+      // Die App wird zurückgeholt: Liegt das Bautagebuch noch offen und ist inzwischen ein
+      // neuer Tag angebrochen (Handy über Nacht gesperrt), auf den heutigen Tag umstellen.
+      // Nur, wenn das Datum von der App gesetzt war – einen bewusst gewählten Archivtag
+      // lässt sie stehen.
+      if (aktiveView === 'view-bautagebuch' && diaryDatumAutomatisch
+          && diaryDate !== Datum.heute()) {
+        // Erst den bisherigen Tag sichern (flushDiary arbeitet noch mit dem alten
+        // diaryDate), dann umstellen – sonst ginge eine offene Eingabe verloren.
+        flushDiary()
+          .then(initDiaryView)
+          .catch((e) => console.warn('Bautagebuch-Datum konnte nicht aktualisiert werden', e));
+      }
+    });
     window.addEventListener('pagehide', alleSichern);
     $$('[data-go]').forEach((b) => b.onclick = () => goGuard(b.dataset.go));
     $('#projectForm').addEventListener('submit', saveProjectForm);
@@ -1227,7 +1256,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v39'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v40'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
@@ -1317,6 +1346,7 @@ const App = (() => {
   function resetJobState() {
     catalogNames = null;   // Vorlagen-Dropdown für diesen Auftrag neu aufbauen
     diaryDate = null;
+    diaryDatumAutomatisch = true;
     currentNode = null;
     expandedObers.clear();
     expandedUnters.clear();

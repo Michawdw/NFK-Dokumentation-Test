@@ -228,7 +228,7 @@ const ExportZip = (() => {
     const nr = App.filialNr(project.filiale) || (clean(project.filiale).match(/\d+/) || [])[0];
     const fil = (nr || clean(project.filiale) || 'Projekt').replace(/\s+/g, '_');
     const ort = clean(project.ort).replace(/\s+/g, '_');
-    const d = new Date().toISOString().slice(0, 10).replace(/-/g, '_');
+    const d = Datum.fuerDatei();
     const parts = ['Bilddoku', 'LI' + fil];
     if (ort) parts.push(ort);
     parts.push('Stand', d);

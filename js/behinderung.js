@@ -58,7 +58,7 @@ const Behinderung = (() => {
   let cameraInput = null, galleryInput = null;
 
   const nodeKeyFor = (id) => NS + id;
-  const today = () => new Date().toISOString().slice(0, 10);
+  const today = () => Datum.heute();
 
   function list(job) {
     if (!job.behinderungen) job.behinderungen = [];

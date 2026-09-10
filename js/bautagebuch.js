@@ -139,7 +139,7 @@ const Bautagebuch = (() => {
     const ort = clean(model.ort).replace(/\s+/g, '_');
     const nr = App.filialNr(filRaw) || (filRaw.match(/\d+/) || [])[0];
     const fil = (nr || filRaw).replace(/\s+/g, '_');
-    const d = (model.datum || new Date().toISOString().slice(0, 10)).replace(/-/g, '_');
+    const d = Datum.fuerDatei(model.datum);
     const parts = ['Bautagebuch', 'LI' + fil];
     if (ort) parts.push(ort);
     parts.push(d);

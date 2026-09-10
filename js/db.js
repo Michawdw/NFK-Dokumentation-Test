@@ -183,7 +183,7 @@ const DB = (() => {
       id: 'job_' + now + '_' + Math.random().toString(36).slice(2, 7),
       name: name || 'Neuer Auftrag',
       header: Object.assign(
-        { filiale: '', ort: '', datum: new Date().toISOString().slice(0, 10), beauftragung: 'NFK Vollverkabelung', techniker: [] },
+        { filiale: '', ort: '', datum: Datum.heute(), beauftragung: 'NFK Vollverkabelung', techniker: [] },
         headerDefaults || {}
       ),
       structure: [], customNames: [], selectedTemplate: null, priorCounts: {},

@@ -48,7 +48,7 @@ const Handover = (() => {
     const nr = App.filialNr(h.filiale) || (clean(h.filiale).match(/\d+/) || [])[0];
     const fil = (nr || clean(h.filiale)).replace(/\s+/g, '_');
     const ort = clean(h.ort).replace(/\s+/g, '_');
-    const d = (h.datum || new Date().toISOString().slice(0, 10)).replace(/-/g, '_');
+    const d = Datum.fuerDatei(h.datum);
     return ['Uebergabe', 'LI' + fil, ort, d].filter(Boolean).join('_').replace(/_+/g, '_') + '.xlsx';
   }
 
@@ -262,6 +262,19 @@ const Handover = (() => {
     } catch (e) { return []; }
   }
 
+  // Vorprüfung des Vorteams übernehmen – aber nur, wenn hier noch keine eigene beantwortet
+  // wurde: eine bereits ausgefüllte Vorprüfung darf ein Import nie überschreiben.
+  // Ohne diesen Schritt bliebe der Empfänger durch goGuard aus Bilddoku und Bautagebuch
+  // ausgesperrt und müsste eine längst laufende Baustelle noch einmal prüfen.
+  function uebernehmeVorpruefung(kv, job) {
+    if (!kv || !kv.vorpruefung) return;
+    if (job.vorpruefung && !Vorpruefung.isIncomplete(job)) return;
+    try {
+      const v = JSON.parse(kv.vorpruefung);
+      if (v && v.items) job.vorpruefung = v;
+    } catch (e) { console.warn('Vorprüfung aus der Übergabe unlesbar:', e); }
+  }
+
   // Baut aus den eingelesenen Zeilen Struktur, Zähler und „nicht benötigt"-Marken und
   // schreibt sie in einen Auftrag.
   //   opts.job       vorhandenen Auftrag aktualisieren (sonst: über kv.id suchen / neu anlegen)
@@ -305,6 +318,10 @@ const Handover = (() => {
           .map((p) => Array.isArray(p) ? Structure.unterKey(p[0], p[1]) : String(p))),
         nodes: vereinen(alt.nodes, skipNodes),
       };
+      // Auch auf diesem Weg: Wer die ZIP des Vorteams über „Beiträge zusammenführen"
+      // einliest, statt über „Übergabe import", landet bei gleicher Vorlage hier – und
+      // wäre sonst als Einziger ohne Vorprüfung und damit gesperrt.
+      uebernehmeVorpruefung(kv, job);
       await DB.saveJob(job);
       return { job, neu: false, positionen: rows.length };
     }
@@ -394,20 +411,9 @@ const Handover = (() => {
       nodes: vereinen(altSkip.nodes, skippedNodes),
     };
 
-    // Die bisherige Angabe ist nach dem Strukturaustausch in jedem Fall überholt.
-    // Vorprüfung des Vorteams übernehmen – aber nur, wenn hier noch keine eigene
-    // beantwortet wurde: eine bereits ausgefüllte Vorprüfung darf ein Import nie
-    // überschreiben.
-    if (kv.vorpruefung) {
-      const eigeneOffen = !job.vorpruefung || Vorpruefung.isIncomplete(job);
-      if (eigeneOffen) {
-        try {
-          const v = JSON.parse(kv.vorpruefung);
-          if (v && v.items) job.vorpruefung = v;
-        } catch (e) { console.warn('Vorprüfung aus der Übergabe unlesbar:', e); }
-      }
-    }
+    uebernehmeVorpruefung(kv, job);
 
+    // Die bisherige Angabe ist nach dem Strukturaustausch in jedem Fall überholt.
     job.selectedTemplate = kv.vorlage || Structure.HANDOVER_LABEL;
 
     await DB.saveJob(job);
