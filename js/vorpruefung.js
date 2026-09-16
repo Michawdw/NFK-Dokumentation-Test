@@ -67,6 +67,21 @@ const Vorpruefung = (() => {
     return POINTS.some((p) => !pointComplete(p, job.vorpruefung.items[p.id] || {}));
   }
 
+  // Übernommene Baustelle: Die Vorprüfung gehört zur Erstbegehung und ist rein intern. Wer
+  // einen Auftrag aus der Übergabe-Datei oder der Bilddoku-ZIP eines anderen Teams übernimmt,
+  // war bei der Erstbegehung nicht dabei – gäbe es das Paket nicht, wäre die Prüfung nie
+  // gelaufen. Für solche Aufträge entfällt sie deshalb ganz (kein Gate, keine Anzeige).
+  // Altbestand ohne Kennzeichen (vor v42 importiert): Import-Spuren im Auftrag zählen als
+  // Beleg, solange die Vorprüfung unvollständig ist. Ohne diese Zeile säße ein Team, das
+  // heute schon festhängt, auch nach dem Update weiter fest.
+  function entfaellt(job) {
+    if (!job) return false;
+    if (job.uebernommen) return true;
+    if (!isIncomplete(job)) return false;
+    const fremderStand = !!(job.priorCounts && Object.keys(job.priorCounts).length);
+    return fremderStand || job.selectedTemplate === Structure.HANDOVER_LABEL;
+  }
+
   function answeredCount(job) {
     if (!job || !job.vorpruefung || !job.vorpruefung.items) return 0;
     return POINTS.filter((p) => pointComplete(p, job.vorpruefung.items[p.id] || {})).length;
@@ -324,5 +339,5 @@ const Vorpruefung = (() => {
     if (protoBtn) protoBtn.onclick = makeProtokoll;
   }
 
-  return { POINTS, init, enter, isIncomplete, answeredCount, flagMissing, flush };
+  return { POINTS, init, enter, isIncomplete, entfaellt, answeredCount, flagMissing, flush };
 })();

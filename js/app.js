@@ -42,9 +42,16 @@ const App = (() => {
   // beantwortet ist. Andernfalls zur Vorprüfung springen und offene Punkte markieren.
   // Die Baubehinderungsanzeige ist bewusst NICHT gesperrt: eine Behinderung tritt oft
   // schon beim Antreffen der Baustelle auf, also vor Abschluss der Vorprüfung.
+  // Vorher aber – für ALLE Arbeitsbereiche einschließlich Vorprüfung und
+  // Baubehinderungsanzeige – vollständig gespeicherte Stammdaten: sonst entstehen Fotos und
+  // Einträge ohne Filiale, und ZIP-Name, Übergabe und Filial-Warnung laufen ins Leere.
   function goGuard(target) {
+    if (target !== 'view-start' && fehlendeStammdaten(currentJob).length) {
+      stammdatenAnmahnen();
+      return;
+    }
     if ((target === 'view-bilddoku' || target === 'view-bautagebuch')
-        && Vorpruefung.isIncomplete(currentJob)) {
+        && !Vorpruefung.entfaellt(currentJob) && Vorpruefung.isIncomplete(currentJob)) {
       show('view-vorpruefung');
       Vorpruefung.flagMissing();
       toast('Bitte zuerst die Vorprüfung vollständig beantworten.');
@@ -175,6 +182,44 @@ const App = (() => {
     });
   }
 
+  // Auswahl-Dialog mit großen Knöpfen statt OK/Abbrechen. Liefert den Schlüssel der
+  // gewählten Option oder null (Abbruch).
+  // WICHTIG: Was eine Option auslöst, läuft SYNCHRON im Klick-Handler (option.sofort) und
+  // nicht erst, nachdem das Promise aufgelöst ist – Android öffnet die Dateiauswahl nur
+  // direkt aus einer Nutzergeste heraus.
+  function openAuswahl(title, html, optionen) {
+    return new Promise((resolve) => {
+      $('#modalTitle').textContent = title;
+      $('#modalBody').innerHTML = html + '<div class="bigchoice">' + optionen.map((o) =>
+        `<button type="button" class="bigbtn" data-key="${escAttr(o.key)}">
+           <span class="bigbtn-emoji">${escHtml(o.emoji || '')}</span>
+           <span class="bigbtn-title">${escHtml(o.titel)}</span>
+           <span class="bigbtn-sub">${escHtml(o.sub || '')}</span>
+         </button>`).join('') + '</div>';
+      const cancel = $('#modalCancel'), ok = $('#modalOk'), overlay = $('#modalOverlay');
+      ok.hidden = true;             // hier entscheiden die Knöpfe im Inhalt
+      cancel.hidden = false;
+      cancel.textContent = 'Abbrechen';
+      overlay.hidden = false;
+      const finish = (key) => {
+        overlay.hidden = true;
+        ok.hidden = false;          // für alle anderen Dialoge zurückstellen
+        overlay.onclick = null;
+        resolve(key);
+      };
+      $$('#modalBody .bigbtn').forEach((b) => {
+        b.onclick = () => {
+          const o = optionen.find((x) => x.key === b.dataset.key);
+          if (o && o.sofort) o.sofort();
+          finish(b.dataset.key);
+        };
+      });
+      cancel.onclick = () => finish(null);
+      $('#modalClose').onclick = () => finish(null);
+      overlay.onclick = (e) => { if (e.target === overlay) finish(null); };
+    });
+  }
+
   // Vierstellige Filialnummer aus beliebiger Schreibweise: „7423", „LI7423", „Li7423",
   // „DE7423", „7423 München", „Filiale 2 - 7423" -> alle „7423". Die Nummer ist die einzige
   // Angabe, die auf allen Geräten gleich ist – der Rest des Feldes wird frei getippt.
@@ -182,6 +227,35 @@ const App = (() => {
   function filialNr(text) {
     const m = String(text == null ? '' : text).match(/(?:^|\D)(\d{4})(?!\d)/);
     return m ? m[1] : null;
+  }
+
+  // Welche Pflicht-Stammdaten fehlen im GESPEICHERTEN Kopf des Auftrags? Maßgeblich ist der
+  // gespeicherte Stand, nicht das Formular – eingetippt, aber nicht gespeichert, zählt nicht.
+  // Leeres Ergebnis = Auftrag darf bearbeitet werden.
+  const PFLICHT_STAMMDATEN = [['filiale', 'Bauvorhaben / Filiale'], ['ort', 'Ort'], ['datum', 'Datum']];
+  function fehlendeStammdaten(job) {
+    const h = (job && job.header) || {};
+    return PFLICHT_STAMMDATEN
+      .filter(([name]) => !String(h[name] == null ? '' : h[name]).trim())
+      .map(([, label]) => label);
+  }
+
+  // Erklärt auf der Startseite, warum es nicht weitergeht: leere Felder markiert der Browser
+  // selbst (reportValidity fokussiert das erste), sonst fehlt nur noch das Speichern.
+  function stammdatenAnmahnen() {
+    if (aktiveView !== 'view-start') show('view-start');
+    const f = $('#projectForm');
+    // Nur Leerzeichen gelten als leer (gespeichert wird getrimmt) – sonst hieße es fälschlich
+    // „erst speichern", und nach dem Speichern bliebe der Auftrag trotzdem gesperrt.
+    PFLICHT_STAMMDATEN.forEach(([name]) => { if (!f[name].value.trim()) f[name].value = ''; });
+    if (!f.checkValidity()) {
+      f.reportValidity();
+      toast('Bitte zuerst die Stammdaten ausfüllen und speichern.');
+    } else {
+      const btn = f.querySelector('button[type="submit"]');
+      if (btn) btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      toast('Bitte die Stammdaten erst speichern.');
+    }
   }
 
   // Liefert true, wenn die Datei das Gerät verlassen hat (geteilt oder heruntergeladen),
@@ -323,7 +397,26 @@ const App = (() => {
     toast('Auftrag gelöscht');
   }
 
+  // Zwei Wege in einen Auftrag: neue Baustelle (Stammdaten + Vorprüfung) oder laufende
+  // Baustelle übernehmen. Beim Übernehmen entsteht der Auftrag komplett aus der Datei –
+  // niemand tippt Stammdaten ab, und die Vorprüfung des Vorteams bleibt maßgeblich.
   async function newJobFlow() {
+    const wahl = await openAuswahl('Auftrag anlegen',
+      '<p class="hint">Beginnt hier eine neue Baustelle, oder wird eine laufende übernommen?</p>',
+      [
+        { key: 'neu', emoji: '🏗', titel: 'Neue Baustelle',
+          sub: 'Stammdaten ausfüllen, danach die Vorprüfung' },
+        { key: 'uebernahme', emoji: '📥', titel: 'Baustelle übernehmen',
+          sub: 'Übergabe-Datei (.xlsx) oder Bilddoku-ZIP einlesen – Stammdaten kommen mit',
+          sofort: () => $('#startImport').click() },
+      ]);
+    // Die Übernahme läuft über die Dateiauswahl (importAnyFile); ein Abbruch legt bewusst
+    // keinen leeren Auftrag an.
+    if (wahl !== 'neu') return;
+    await neuenAuftragAnlegen();
+  }
+
+  async function neuenAuftragAnlegen() {
     await flushDiary();            // offene Eingaben gehören noch zum bisherigen Auftrag
     await Vorpruefung.flush();
     const job = await DB.createJob('Auftrag ' + ((await DB.listJobs()).length + 1));
@@ -347,15 +440,28 @@ const App = (() => {
     f.ort.value = h.ort || '';
     f.datum.value = h.datum || Datum.heute();
     f.beauftragung.value = h.beauftragung || 'NFK Vollverkabelung';
+    renderSperre();
     renderVpStatus();
     await renderBackupReminder('#backupReminderStart');
+  }
+
+  // Funktionsknöpfe dimmen und Hinweis zeigen, solange die Stammdaten nicht gespeichert sind.
+  function renderSperre() {
+    const gesperrt = fehlendeStammdaten(currentJob).length > 0;
+    const wahl = $('.bigchoice');
+    if (wahl) wahl.classList.toggle('gesperrt', gesperrt);
+    const hinweis = $('#sperreHinweis');
+    if (hinweis) hinweis.hidden = !gesperrt;
   }
 
   // Zeigt auf der Startseite den Vorprüfungs-Status des aktiven Auftrags (Link zur View).
   function renderVpStatus() {
     const el = $('#vpStatus');
     if (!el) return;
-    if (!currentJob) { el.hidden = true; return; }
+    // Ohne gespeicherte Stammdaten gibt es noch nichts zu prüfen – kein rotes „0/7 offen".
+    if (!currentJob || fehlendeStammdaten(currentJob).length) { el.hidden = true; return; }
+    // Übernommene Baustelle: Die Vorprüfung gehört dem Vorteam – hier ist sie kein Thema mehr.
+    if (Vorpruefung.entfaellt(currentJob)) { el.hidden = true; return; }
     const total = Vorpruefung.POINTS.length;
     const answered = Vorpruefung.answeredCount(currentJob);
     const done = !!(currentJob.vorpruefung && currentJob.vorpruefung.done);
@@ -370,7 +476,7 @@ const App = (() => {
         <button type="button" class="btn primary vp-open">Vorprüfung öffnen</button>`;
     }
     const btn = el.querySelector('.vp-open');
-    if (btn) btn.onclick = () => show('view-vorpruefung');
+    if (btn) btn.onclick = () => goGuard('view-vorpruefung');
   }
 
   // --------------------------------------------------------- Backup-Erinnerung
@@ -457,6 +563,7 @@ const App = (() => {
     }
     await DB.saveJob(currentJob);
     await renderJobList();
+    renderSperre();
     renderVpStatus();
     const saved = $('#projectSaved');
     saved.hidden = false;
@@ -1207,7 +1314,11 @@ const App = (() => {
     // gepushte Einträge im Verlauf liegen und der Android-Zurück-Button wirkte mehrfach
     // wirkungslos, bevor die App schloss.
     window.addEventListener('popstate', (e) => {
-      _switchView((e.state && e.state.nfk) ? e.state.nfk : 'view-start');
+      let ziel = (e.state && e.state.nfk) ? e.state.nfk : 'view-start';
+      // Verlaufseinträge stammen evtl. von einem vorher geöffneten Auftrag – ohne gespeicherte
+      // Stammdaten führt auch der Verlauf nicht in einen Arbeitsbereich.
+      if (ziel !== 'view-start' && fehlendeStammdaten(currentJob).length) ziel = 'view-start';
+      _switchView(ziel);
     });
     // Android friert die App beim Wegwischen ein oder beendet sie – vorher noch sichern.
     const alleSichern = () => { flushDiary(); Vorpruefung.flush(); };
@@ -1242,6 +1353,10 @@ const App = (() => {
     // Beide Knöpfe nehmen beides an (.xlsx wie .zip) – importAnyFile entscheidet.
     $('#handoverImport').addEventListener('change', importAnyFile);
     $('#mergeImport').addEventListener('change', importAnyFile);
+    // Derselbe Import auch auf der Startseite: die Knöpfe in der Bilddoku sind ohne
+    // gespeicherte Stammdaten gesperrt – auf einem frischen Handy käme man sonst nie an
+    // die Übergabe des Kollegen heran.
+    $('#startImport').addEventListener('change', importAnyFile);
     $('#diarySaveBtn').onclick = saveDiary;
     $('#diaryExportBtn').onclick = exportDiary;
     $('#modalOverlay').addEventListener('click', (e) => {
@@ -1256,7 +1371,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v40'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v42'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
@@ -1457,10 +1572,10 @@ const App = (() => {
       // Fehlende Dateien MÜSSEN sichtbar sein: sonst hält der Techniker eine unvollständig
       // übertragene ZIP für vollständig eingelesen.
       if (r.missing) teile.push(`⚠ ${r.missing} Bild(er) fehlten im Archiv`);
-      if (r.kopfFelder && r.kopfFelder.length) {
-        teile.push('Stammdaten aktualisiert');
-        await loadStartView(); // Projektformular auf die neuen Werte bringen
-      }
+      if (r.kopfFelder && r.kopfFelder.length) teile.push('Stammdaten aktualisiert');
+      // Immer: Projektformular, Auftragsliste und Sperre auf den neuen Stand bringen – der
+      // Import kann auch von der Startseite aus einen leeren Auftrag befüllt haben.
+      await loadStartView();
       toast(teile.join(' · '), 4200);
     } catch (err) {
       console.error(err);
@@ -1468,15 +1583,46 @@ const App = (() => {
     }
   }
 
+  // Nach einer Übernahme den leeren Auftrag entfernen, der vorher offen war: das automatisch
+  // angelegte „Auftrag 1" oder ein frisch angelegter, in den jemand nur Stammdaten getippt
+  // hat. Nur, wenn wirklich nichts drinsteckt – und nur, wenn er zur selben Filiale gehört
+  // oder noch keine Filiale gespeichert hat. Sonst stünden zwei Aufträge derselben Baustelle
+  // in der Liste, und der Techniker fotografiert womöglich in den falschen.
+  async function entferneLeerenVorlaeufer(vorher, neuer) {
+    if (!vorher || !neuer || vorher.id === neuer.id) return false;
+    try {
+      const alt = await DB.getJob(vorher.id);
+      if (!alt) return false;
+      if ((alt.behinderungen || []).length) return false;
+      if ((await DB.getAllPhotos(alt.id)).length) return false;
+      if ((await DB.listDiary(alt.id)).length) return false;
+      const filialeAlt = String((alt.header || {}).filiale || '').trim();
+      const nrAlt = filialNr(filialeAlt), nrNeu = filialNr((neuer.header || {}).filiale);
+      if (nrAlt && nrNeu && nrAlt !== nrNeu) return false;   // andere Baustelle – stehenlassen
+      if (!nrAlt && filialeAlt) return false;                // Nummer unklar – nicht anfassen
+      await DB.deleteJob(alt.id);
+      return true;
+    } catch (e) {
+      console.warn('Leeren Vorgänger-Auftrag nicht entfernt:', e);
+      return false;
+    }
+  }
+
   async function handoverImport(file) {
     toast('Lese Übergabe-Datei…');
+    const vorher = currentJob;
     try {
       const job = await Handover.importXlsx(file, { pruefen: pruefeHerkunft });
       if (!job) { toast('Import abgebrochen – nichts verändert.'); return; }
       await adoptJob(job);
-      show('view-start');
+      const entfernt = await entferneLeerenVorlaeufer(vorher, job);
+      // Dort bleiben, wo der Import gestartet wurde: Wer aus der Bilddoku heraus importiert,
+      // will den neuen Baum sehen und nicht unvermittelt im Hauptmenü stehen.
+      if (aktiveView === 'view-bilddoku') await enterBilddoku();
+      else show('view-start');
       await loadStartView();
-      toast('Auftrag übernommen: ' + (job.name || ''));
+      toast('Auftrag übernommen: ' + (job.name || '')
+        + (entfernt ? ' · leerer Auftrag entfernt' : ''), 4200);
     } catch (err) {
       console.error(err);
       toast('Import fehlgeschlagen: ' + (err.message || err));

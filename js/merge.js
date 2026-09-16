@@ -308,8 +308,13 @@ const Merge = (() => {
     // Struktur weicht ab -> anbieten, die des Kollegen zu übernehmen. Danach passen die
     // Schlüssel wieder und die Bilder landen in den eigenen Positionen statt in einem
     // zweiten Baum daneben.
+    // Hat der Auftrag noch gar keine Struktur (frisch angelegt und über „📥 Auftrag
+    // übernehmen" auf der Startseite befüllt), gibt es nichts, was abweichen könnte: dann
+    // ohne Rückfrage übernehmen – die Frage nach einer „älteren Vorlagen-Version" wäre
+    // irreführend.
     if (unbekannt > 0 && uebergabe && !strukturUebernommen) {
-      const ok = await App.openConfirm(
+      const ohneStruktur = !(job.structure || []).length;
+      const ok = ohneStruktur || await App.openConfirm(
         'Andere Vorlagen-Version',
         `<p>Die ZIP enthält <b>${unbekannt}</b> Position(en), die es in deinem Auftrag nicht
           gibt – sie stammt vermutlich aus einer älteren Vorlagen-Version.</p>
@@ -433,6 +438,11 @@ const Merge = (() => {
       // Lückenlos durchnummerieren: prior+1 … prior+n (nach Aufnahmezeit).
       await DB.renumberNode(job.id, key, prior);
     }
+
+    // Fremdes Paket eingelesen: Der Auftrag gilt als übernommen, die Vorprüfung entfällt
+    // (siehe Vorpruefung.entfaellt). Die eigene ZIP zurückzulesen ändert nichts.
+    const paketId = uebergabe && uebergabe.kv && uebergabe.kv.id;
+    if (jobNeu || !paketId || paketId !== job.id) job.uebernommen = true;
 
     await App.saveCurrentJob();
     return { added, skipped, missing, addedNodes, unbekannt, strukturUebernommen, jobNeu, wurzel, kopfFelder };

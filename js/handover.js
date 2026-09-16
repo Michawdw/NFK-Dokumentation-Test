@@ -275,6 +275,16 @@ const Handover = (() => {
     } catch (e) { console.warn('Vorprüfung aus der Übergabe unlesbar:', e); }
   }
 
+  // Kennzeichnet den Auftrag als übernommen, sobald Daten aus einem FREMDEN Paket
+  // hineinlaufen. Für solche Aufträge entfällt die Vorprüfung (Vorpruefung.entfaellt): Wer
+  // ein Paket bekommt, war bei der Erstbegehung nicht dabei, und ohne Erstbegehung gäbe es
+  // das Paket nicht. Das EIGENE Paket zurückzulesen (Gerätewechsel, eigene ZIP) ändert
+  // dagegen nichts – dort bleibt die eigene Vorprüfung samt Protokoll sichtbar.
+  function markiereUebernahme(kv, job, neu) {
+    if (!neu && kv && kv.id && kv.id === job.id) return;
+    job.uebernommen = true;
+  }
+
   // Baut aus den eingelesenen Zeilen Struktur, Zähler und „nicht benötigt"-Marken und
   // schreibt sie in einen Auftrag.
   //   opts.job       vorhandenen Auftrag aktualisieren (sonst: über kv.id suchen / neu anlegen)
@@ -322,6 +332,7 @@ const Handover = (() => {
       // einliest, statt über „Übergabe import", landet bei gleicher Vorlage hier – und
       // wäre sonst als Einziger ohne Vorprüfung und damit gesperrt.
       uebernehmeVorpruefung(kv, job);
+      markiereUebernahme(kv, job, false);
       await DB.saveJob(job);
       return { job, neu: false, positionen: rows.length };
     }
@@ -412,6 +423,7 @@ const Handover = (() => {
     };
 
     uebernehmeVorpruefung(kv, job);
+    markiereUebernahme(kv, job, neu);
 
     // Die bisherige Angabe ist nach dem Strukturaustausch in jedem Fall überholt.
     job.selectedTemplate = kv.vorlage || Structure.HANDOVER_LABEL;

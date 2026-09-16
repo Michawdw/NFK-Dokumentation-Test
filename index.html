@@ -23,7 +23,13 @@
     <section id="view-start" class="view active">
       <div class="jobs-head">
         <h2>Aufträge</h2>
-        <button type="button" id="newJobBtn" class="btn ghost">+ Neuer Auftrag</button>
+        <div class="jobs-actions">
+          <label class="btn ghost filelabel" title="Übergabe-Datei (.xlsx) oder Bilddoku-ZIP vom Kollegen einlesen">
+            📥 Auftrag übernehmen
+            <input id="startImport" type="file" accept=".xlsx,.zip" hidden />
+          </label>
+          <button type="button" id="newJobBtn" class="btn ghost">+ Neuer Auftrag</button>
+        </div>
       </div>
       <div id="jobList" class="job-list"></div>
 
@@ -51,6 +57,7 @@
       <div id="vpStatus" class="vp-status" hidden></div>
 
       <h2>Funktion wählen</h2>
+      <p id="sperreHinweis" class="sperre-hinweis" hidden>🔒 Erst Stammdaten ausfüllen und speichern – dann geht's los.</p>
       <div class="bigchoice">
         <button class="bigbtn" data-go="view-bilddoku">
           <span class="bigbtn-emoji">📷</span>
