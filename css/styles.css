@@ -185,6 +185,9 @@ fieldset.techs legend { font-weight: 700; padding: 0 6px; }
 .bigbtn-emoji { font-size: 34px; }
 .bigbtn-title { font-size: 20px; font-weight: 700; color: var(--brand); }
 .bigbtn-sub { font-size: 14px; color: var(--muted); }
+/* Ausnahme-Weg in Auswahl-Dialogen (z. B. fremde Filiale trotzdem importieren) */
+.bigbtn.danger { border-color: #f3c4be; }
+.bigbtn.danger .bigbtn-title { color: var(--warn); }
 
 /* ---------- Structure tree ---------- */
 .tree { margin-top: 8px; }
@@ -220,8 +223,9 @@ fieldset.techs legend { font-weight: 700; padding: 0 6px; }
   border-radius: 12px;
   background: #fff;
 }
-.name-row.done { background: var(--done-bg); color: var(--done-text); }
-.name-row.done .name-label { color: var(--done-text); }
+/* Erledigt: hellgrün statt grau – grau wirkte wie „deaktiviert“ und war schlechter erkennbar */
+.name-row.done { background: #e7f5ec; border-color: #b7dfc5; color: var(--text); }
+.name-row.done .name-label { color: var(--text); }
 .name-head { display: flex; align-items: center; gap: 10px; }
 .name-label { flex: 1; min-width: 0; font-weight: 700; word-break: break-word; }
 .name-count { font-size: 13px; color: var(--muted); }
@@ -267,14 +271,14 @@ fieldset.techs legend { font-weight: 700; padding: 0 6px; }
 }
 .row-check { color: var(--ok); font-weight: 900; }
 .name-row.done .row-check { color: var(--ok); }
-.name-row.done .name-count { color: var(--done-text); }
+.name-row.done .name-count { color: var(--ok); }
 .count-badge {
   min-width: 54px; text-align: center;
   font-weight: 700; font-size: 14px;
   padding: 4px 8px; border-radius: 999px;
   background: #eaf2fb; color: var(--brand);
 }
-.name-row.done .count-badge { background: #e0e4e8; color: var(--done-text); }
+.name-row.done .count-badge { background: #cdebd8; color: var(--ok); }
 .cam-btn { width: var(--tap); height: var(--tap); border-radius: 12px; border: 1px solid var(--brand); background: var(--brand); color: #fff; font-size: 22px; }
 .gal-btn { width: var(--tap); height: var(--tap); border-radius: 12px; border: 1px solid var(--line); background: #fff; font-size: 20px; }
 .thumbs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }

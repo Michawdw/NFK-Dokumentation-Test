@@ -453,7 +453,7 @@ const Handover = (() => {
       const antwort = await o.pruefen(
         { filiale: daten.kv.filiale || '', ort: daten.kv.ort || '', filialNr: App.filialNr(daten.kv.filiale) },
         bestehend || App.getCurrentJob() || null,
-        { neu: !bestehend });
+        { neu: !bestehend, xlsx: true });
       if (!antwort) return null; // abgebrochen – es wurde nichts geschrieben
     }
 

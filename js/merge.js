@@ -234,9 +234,11 @@ const Merge = (() => {
   // zur Typerkennung ohnehin öffnen und soll sie nicht ein zweites Mal einlesen müssen
   // (auf der Baustelle sind das schnell einige hundert MB).
   //   opts.dateiname  Name der ZIP – letzte Quelle für die Filialnummer
-  //   opts.pruefen    (paket, zielAuftrag) => null (abbrechen) | { kopfFelder: [...] }.
+  //   opts.pruefen    (paket, zielAuftrag) => null (abbrechen)
+  //                   | { kopfFelder: [...], ziel: 'aktuell' | 'neu' | 'wechseln', zielJob }.
   //                   Wird aufgerufen, sobald der Kopf des Pakets gelesen ist und BEVOR
-  //                   irgendetwas geschrieben wird.
+  //                   irgendetwas geschrieben wird. 'neu' legt aus dem Paket einen eigenen
+  //                   Auftrag an (fremde Filiale), 'wechseln' liest in zielJob ein.
   async function importContributionZip(fileOderZip, opts) {
     const o = opts || {};
     const roh = (fileOderZip && typeof fileOderZip.file === 'function')
@@ -249,8 +251,9 @@ const Merge = (() => {
     const uebergabe = await Handover.readFromZip(zip);
 
     let job = App.getCurrentJob();
-    let jobNeu = false, strukturUebernommen = false;
+    let jobNeu = false, strukturUebernommen = false, gewechselt = false;
     let kopfFelder = [];
+    let kvNeu = uebergabe && uebergabe.kv;
 
     // Gehört das Paket überhaupt zu dieser Baustelle? Prüfen, BEVOR etwas geschrieben wird –
     // ein Abbruch muss den Auftrag unangetastet lassen. Zielauftrag ist der aktuelle; wird
@@ -261,9 +264,24 @@ const Merge = (() => {
         filiale: kv.filiale || '',
         ort: kv.ort || '',
         filialNr: App.filialNr(kv.filiale) || filialNrAusBildern(zip) || App.filialNr(o.dateiname),
+        hatUebergabe: !!uebergabe,
       }, job || null);
       if (!antwort) return { abgebrochen: true };
       kopfFelder = antwort.kopfFelder || [];
+      if (antwort.ziel === 'neu') {
+        // Fremde Filiale: eigenen Auftrag aus dem Paket anlegen (Block unten). Der offene
+        // Auftrag bleibt unangetastet. Trägt ein vorhandener Auftrag zufällig schon die id
+        // des Pakets, bekommt der neue eine eigene – sonst würde jener überschrieben.
+        job = null;
+        kopfFelder = [];
+        if (kvNeu && kvNeu.id && await DB.getJob(kvNeu.id)) {
+          kvNeu = Object.assign({}, kvNeu, { id: '' });
+        }
+      } else if (antwort.ziel === 'wechseln' && antwort.zielJob) {
+        await App.adoptJob(antwort.zielJob);
+        job = antwort.zielJob;
+        gewechselt = true;
+      }
     }
 
     // Kein Auftrag aktiv: aus der ZIP einen anlegen – es gibt nichts zu überschreiben,
@@ -272,7 +290,7 @@ const Merge = (() => {
       if (!uebergabe) {
         throw new Error('Kein Auftrag aktiv – und die ZIP enthält keine Übergabe-Daten.');
       }
-      const r = await Handover.applyHandoverData(uebergabe.kv, uebergabe.rows);
+      const r = await Handover.applyHandoverData(kvNeu, uebergabe.rows);
       await App.adoptJob(r.job);
       job = r.job;
       jobNeu = strukturUebernommen = true;
@@ -445,7 +463,7 @@ const Merge = (() => {
     if (jobNeu || !paketId || paketId !== job.id) job.uebernommen = true;
 
     await App.saveCurrentJob();
-    return { added, skipped, missing, addedNodes, unbekannt, strukturUebernommen, jobNeu, wurzel, kopfFelder };
+    return { added, skipped, missing, addedNodes, unbekannt, strukturUebernommen, jobNeu, gewechselt, wurzel, kopfFelder };
   }
 
   return { importContributionZip, zipInhalt };

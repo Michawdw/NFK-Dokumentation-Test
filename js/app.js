@@ -191,7 +191,7 @@ const App = (() => {
     return new Promise((resolve) => {
       $('#modalTitle').textContent = title;
       $('#modalBody').innerHTML = html + '<div class="bigchoice">' + optionen.map((o) =>
-        `<button type="button" class="bigbtn" data-key="${escAttr(o.key)}">
+        `<button type="button" class="bigbtn${o.cls ? ' ' + escAttr(o.cls) : ''}" data-key="${escAttr(o.key)}">
            <span class="bigbtn-emoji">${escHtml(o.emoji || '')}</span>
            <span class="bigbtn-title">${escHtml(o.titel)}</span>
            <span class="bigbtn-sub">${escHtml(o.sub || '')}</span>
@@ -1371,7 +1371,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v42'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v43'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
@@ -1497,35 +1497,69 @@ const App = (() => {
 
   // Wird von Merge/Handover aufgerufen, sobald der Kopf des Pakets gelesen ist und bevor
   // etwas geschrieben wird. Liefert null (= Import abbrechen) oder die Stammdaten-Felder,
-  // die aus dem Paket übernommen werden sollen.
+  // die aus dem Paket übernommen werden sollen, plus das Ziel bei fremder Filiale:
+  //   ziel 'aktuell'  in den offenen Auftrag (Standard)
+  //   ziel 'neu'      neuen Auftrag aus dem Paket anlegen (nur ZIP; die .xlsx tut das ohnehin)
+  //   ziel 'wechseln' in den vorhandenen Auftrag dieser Filiale (zielJob) wechseln
   async function pruefeHerkunft(paket, ziel, info) {
     const neuerAuftrag = !!(info && info.neu);
-    const eigen = (ziel && ziel.header) || null;
+    let eigen = (ziel && ziel.header) || null;
     if (!eigen) return { kopfFelder: [] };   // nichts zu vergleichen
+    let antwort = { kopfFelder: [], ziel: 'aktuell' };
 
     // 1) Gehört das Paket zu dieser Baustelle? Maßgeblich sind allein die vier Ziffern –
     //    die Schreibweise drumherum („LI7423", „DE7423", „7423 München") wird frei getippt.
     const nrEigen = filialNr(eigen.filiale), nrPaket = paket.filialNr;
-    const nummerWeicthAb = !!(nrEigen && nrPaket && nrEigen !== nrPaket);
+    let nummerWeicthAb = !!(nrEigen && nrPaket && nrEigen !== nrPaket);
     if (nummerWeicthAb) {
-      const folge = neuerAuftrag
-        ? 'Beim Fortfahren wird ein neuer Auftrag für diese Filiale angelegt.'
-        : 'Beim Fortfahren landen fremde Bilder in dieser Dokumentation.';
       // Die Bezeichnung des Pakets nur zeigen, wenn es eine gibt: bei alten ZIPs ohne
       // Kopfdaten stammt die Nummer aus den Bild-Dateinamen, ein Klartext fehlt dann.
       const paketZeile = paket.filiale
         ? `Paket: „${escHtml(paket.filiale)}"`
         : 'Im Paket steht nur die Nummer (aus den Bilddateien gelesen).';
-      const ok = await openConfirm('Andere Filiale!',
+      // Gibt es die Baustelle hier schon, dorthin wechseln statt einen zweiten Auftrag
+      // derselben Filiale anzulegen – sonst fotografiert man womöglich in den falschen.
+      // Nur beim ZIP: die Übergabe-Datei wählt ihr Ziel selbst (über die Auftrags-id).
+      const zipImport = !(info && info.xlsx);
+      const vorhanden = !zipImport ? null : (await DB.listJobs())
+        .find((j) => j.id !== ziel.id && filialNr((j.header || {}).filiale) === nrPaket) || null;
+      const optionen = [];
+      if (vorhanden) {
+        optionen.push({ key: 'wechseln', emoji: '🔁',
+          titel: `Zu Auftrag „${vorhanden.name || vorhanden.header.filiale}" wechseln`,
+          sub: 'Paket dort einlesen – dieser Auftrag bleibt unverändert' });
+      } else if (neuerAuftrag || paket.hatUebergabe) {
+        optionen.push({ key: 'neu', emoji: '🆕',
+          titel: `Neuen Auftrag für Filiale ${nrPaket} anlegen`,
+          sub: (zipImport ? 'Stammdaten, Bilder und Stand' : 'Stammdaten und Stand')
+            + ' werden übernommen – Vorprüfung entfällt. Dieser Auftrag bleibt unverändert.' });
+      }
+      if (!neuerAuftrag) {
+        optionen.push({ key: 'aktuell', emoji: '⚠', cls: 'danger',
+          titel: 'Trotzdem in diesen Auftrag importieren',
+          sub: zipImport
+            ? `Fremde Bilder landen in der Dokumentation von ${nrEigen}`
+            : `Stammdaten und Stand von ${nrEigen} werden überschrieben` });
+      }
+      const ohneNeu = zipImport && !vorhanden && !paket.hatUebergabe
+        ? '<p class="hint">Das Paket enthält keine Übergabe-Daten – daraus lässt sich kein neuer Auftrag anlegen.</p>'
+        : '';
+      const wahl = await openAuswahl('Andere Filiale!',
         `<p>Dieses Paket gehört zu Filiale <b>${escHtml(nrPaket)}</b>,
             dieser Auftrag ist Filiale <b>${escHtml(nrEigen)}</b>.</p>
-         <p>Dein Auftrag: „${escHtml(eigen.filiale || '')}"<br>${paketZeile}</p>
-         <p class="hint">Wahrscheinlich wurde das falsche Paket gewählt. ${escHtml(folge)}</p>`,
-        'Trotzdem importieren', true);
-      if (!ok) return null;
+         <p>Dein Auftrag: „${escHtml(eigen.filiale || '')}"<br>${paketZeile}</p>${ohneNeu}`,
+        optionen);
+      if (!wahl) return null;
+      if (wahl === 'neu') return { kopfFelder: [], ziel: 'neu' };
+      if (wahl === 'wechseln') {
+        // Ab hier gilt der vorhandene Auftrag als Ziel – Stammdaten gegen DEN vergleichen.
+        antwort = { kopfFelder: [], ziel: 'wechseln', zielJob: vorhanden };
+        eigen = vorhanden.header || {};
+        nummerWeicthAb = false;
+      }
     }
     // Bei einem neuen Auftrag kommen die Stammdaten ohnehin vollständig mit – nichts zu wählen.
-    if (neuerAuftrag) return { kopfFelder: [] };
+    if (neuerAuftrag) return antwort;
 
     // 2) Gleiche Filiale, aber abweichend geschriebene Stammdaten: gegenüberstellen und
     //    Feld für Feld entscheiden lassen. Ist das eigene Feld leer, ist das Paket vorgewählt.
@@ -1537,7 +1571,7 @@ const App = (() => {
         felder.push({ name, label, eigen: meins, paket: ihres, vorauswahl: meins ? 'eigen' : 'paket' });
       }
     }
-    if (!felder.length) return { kopfFelder: [] };
+    if (!felder.length) return antwort;
 
     const alleLeer = felder.every((f) => !f.eigen);
     const einleitung = (nummerWeicthAb
@@ -1549,21 +1583,27 @@ const App = (() => {
     const wahl = await openChoiceModal('Stammdaten weichen ab',
       '<p class="hint">' + einleitung + '</p>',
       felder, { ok: 'Übernehmen', cancel: 'Meine behalten' });
-    return { kopfFelder: wahl ? Object.keys(wahl).filter((k) => wahl[k] === 'paket') : [] };
+    antwort.kopfFelder = wahl ? Object.keys(wahl).filter((k) => wahl[k] === 'paket') : [];
+    return antwort;
   }
 
   async function mergeContribution(zip, dateiname) {
     toast('Führe Bilder zusammen…');
     try {
+      // Offene Eingaben gehören noch zum bisherigen Auftrag – der Import kann gleich wechseln.
+      await flushDiary();
+      await Vorpruefung.flush();
       const r = await Merge.importContributionZip(zip, { dateiname, pruefen: pruefeHerkunft });
       if (r.abgebrochen) { toast('Import abgebrochen – nichts verändert.'); return; }
+      if ((r.jobNeu || r.gewechselt) && aktiveView === 'view-bilddoku') await enterBilddoku();
       await renderTree();
       await renderBackupReminder('#backupReminder');
       if (r.jobNeu || r.strukturUebernommen) {
         populateTemplateSelect(await Structure.getSelectedTemplate());
       }
       const teile = [];
-      if (r.jobNeu) teile.push('Auftrag aus ZIP angelegt');
+      if (r.jobNeu) teile.push('Neuer Auftrag „' + (currentJob.name || '') + '" angelegt');
+      else if (r.gewechselt) teile.push('Gewechselt zu „' + (currentJob.name || '') + '"');
       else if (r.strukturUebernommen) teile.push('Struktur übernommen');
       teile.push(`${r.added} Bild(er) übernommen`);
       if (r.skipped) teile.push(`${r.skipped} bereits vorhanden`);
