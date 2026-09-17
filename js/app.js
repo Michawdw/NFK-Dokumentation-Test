@@ -26,6 +26,11 @@ const App = (() => {
     // Offene Eingaben beim Verlassen sichern (Zurück-Pfeil, Android-Zurück, Funktionswechsel).
     if (aktiveView === 'view-bautagebuch' && viewId !== 'view-bautagebuch') flushDiary();
     if (aktiveView === 'view-vorpruefung' && viewId !== 'view-vorpruefung') Vorpruefung.flush();
+    // Zurück auf die Startseite: „Weitere Aufträge" wieder zuklappen.
+    if (viewId === 'view-start' && aktiveView !== 'view-start' && weitereOffen) {
+      weitereOffen = false;
+      renderJobList();
+    }
     aktiveView = viewId;
     $$('.view').forEach((v) => v.classList.toggle('active', v.id === viewId));
     $('#topTitle').textContent = viewTitles[viewId] || 'NFK Doku';
@@ -326,27 +331,53 @@ const App = (() => {
     toast('Auftrag „' + (job.name || job.header.filiale || '') + '" geöffnet');
   }
 
+  // Nur der aktive Auftrag steht offen da; alle anderen liegen im Klappfeld „Weitere Aufträge".
+  // Bei vielen Baustellen rutschten sonst die Stammdaten des aktiven Auftrags weit nach unten.
+  // Das Feld ist beim Betreten der Startseite und nach jedem Auftragswechsel zu (resetJobState).
+  let weitereOffen = false;
+
   async function renderJobList() {
     const cont = $('#jobList');
     if (!cont) return;
-    const jobs = await DB.listJobs();
+    const jobs = await DB.listJobs();   // zuletzt bearbeitet oben
     cont.innerHTML = '';
-    for (const j of jobs) {
-      const active = currentJob && j.id === currentJob.id;
-      const div = document.createElement('div');
-      div.className = 'job-item' + (active ? ' active' : '');
-      const sub = [j.header.filiale, j.header.ort, j.header.datum].filter(Boolean).join(' · ');
-      div.innerHTML = `<div class="job-main">
-          <div class="job-name">${escHtml(j.name || j.header.filiale || 'Auftrag')}</div>
-          <div class="job-sub">${escHtml(sub)}</div>
-        </div>
-        <button class="job-edit" title="Umbenennen">✎</button>
-        <button class="job-del" title="Löschen">🗑</button>`;
-      div.querySelector('.job-main').onclick = () => { if (!active) switchJob(j.id); };
-      div.querySelector('.job-edit').onclick = (e) => { e.stopPropagation(); renameJob(j); };
-      div.querySelector('.job-del').onclick = (e) => { e.stopPropagation(); deleteJobFlow(j); };
-      cont.appendChild(div);
-    }
+    const aktiv = currentJob ? jobs.find((j) => j.id === currentJob.id) : null;
+    if (!aktiv) { jobs.forEach((j) => cont.appendChild(jobItem(j, false))); return; }
+    cont.appendChild(jobItem(aktiv, true));
+    const weitere = jobs.filter((j) => j !== aktiv);
+    if (!weitere.length) return;
+
+    const knopf = document.createElement('button');
+    knopf.type = 'button';
+    knopf.className = 'job-more';
+    const liste = document.createElement('div');
+    liste.className = 'job-more-list';
+    weitere.forEach((j) => liste.appendChild(jobItem(j, false)));
+    const zeige = () => {
+      liste.hidden = !weitereOffen;
+      knopf.setAttribute('aria-expanded', String(weitereOffen));
+      knopf.textContent = (weitereOffen ? '▾' : '▸') + ` Weitere Aufträge (${weitere.length})`;
+    };
+    knopf.onclick = () => { weitereOffen = !weitereOffen; zeige(); };
+    zeige();
+    cont.appendChild(knopf);
+    cont.appendChild(liste);
+  }
+
+  function jobItem(j, active) {
+    const div = document.createElement('div');
+    div.className = 'job-item' + (active ? ' active' : '');
+    const sub = [j.header.filiale, j.header.ort, j.header.datum].filter(Boolean).join(' · ');
+    div.innerHTML = `<div class="job-main">
+        <div class="job-name">${escHtml(j.name || j.header.filiale || 'Auftrag')}</div>
+        <div class="job-sub">${escHtml(sub)}</div>
+      </div>
+      <button class="job-edit" title="Umbenennen">✎</button>
+      <button class="job-del" title="Löschen">🗑</button>`;
+    div.querySelector('.job-main').onclick = () => { if (!active) switchJob(j.id); };
+    div.querySelector('.job-edit').onclick = (e) => { e.stopPropagation(); renameJob(j); };
+    div.querySelector('.job-del').onclick = (e) => { e.stopPropagation(); deleteJobFlow(j); };
+    return div;
   }
 
   function renameJob(job) {
@@ -1371,7 +1402,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v43'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v44'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
@@ -1465,6 +1496,7 @@ const App = (() => {
     currentNode = null;
     expandedObers.clear();
     expandedUnters.clear();
+    weitereOffen = false;  // Klappfeld „Weitere Aufträge" nach dem Wechsel wieder zu
   }
 
   // Gemeinsamer Einstieg für BEIDE Import-Knöpfe. Erkannt wird am Inhalt, nicht an der
