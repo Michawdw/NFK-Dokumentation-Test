@@ -6,6 +6,7 @@ const Overview = (() => {
   const ORIGIN = {
     custom: { cls: 'custom', text: 'eigen', title: 'selbst angelegt' },
     merge: { cls: 'merge', text: 'von Kollege', title: 'über „Beiträge zusammenführen" dazugekommen' },
+    alt: { cls: 'alt', text: 'aus alter Vorlage', title: 'gibt es in der aktuellen Vorlage nicht mehr' },
   };
 
   // Reichert Knoten mit ist (Anzahl Bilder) und done (ist >= pflicht) an.

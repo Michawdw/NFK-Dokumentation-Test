@@ -256,17 +256,19 @@ fieldset.techs legend { font-weight: 700; padding: 0 6px; }
 }
 .origin-tag.custom { background: #fff1e0; color: #8a5000; }
 .origin-tag.merge { background: #f0e9fb; color: #5b3a9b; }
+.origin-tag.alt { background: #e6eef5; color: #3d5a73; }
 /* Farbbalken am linken Rand. Bewusst KEIN Hintergrund: der ist schon durch „erledigt"
    (grün) und „nicht benötigt" (grau/gestrichelt) belegt – der Balken bleibt in beiden
    Zuständen sichtbar. */
 .name-row.origin-custom, .tree-ober.origin-custom, .tree-unter.origin-custom { border-left: 4px solid #e08a2e; }
 .name-row.origin-merge, .tree-ober.origin-merge, .tree-unter.origin-merge { border-left: 4px solid #7c5cc4; }
+.name-row.origin-alt, .tree-ober.origin-alt, .tree-unter.origin-alt { border-left: 4px solid #6f8ba3; }
 /* In Ordnerzeilen steht das Abzeichen INNERHALB von .grp-name und fließt damit als Text
    mit. Als eigenes Flex-Kind konkurrierte es sonst mit dem Namen um die Breite und
    quetschte ihn auf schmalen Handys in Wortfragmente. */
 .tree-ober .grp-name .origin-tag, .tree-unter .grp-name .origin-tag { font-weight: 700; }
-.tree-ober.origin-custom .grp-name, .tree-ober.origin-merge .grp-name,
-.tree-unter.origin-custom .grp-name, .tree-unter.origin-merge .grp-name {
+.tree-ober.origin-custom .grp-name, .tree-ober.origin-merge .grp-name, .tree-ober.origin-alt .grp-name,
+.tree-unter.origin-custom .grp-name, .tree-unter.origin-merge .grp-name, .tree-unter.origin-alt .grp-name {
   word-break: normal; overflow-wrap: break-word;
 }
 .tree-ober .del-btn, .tree-unter .del-btn {

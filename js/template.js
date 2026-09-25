@@ -120,8 +120,10 @@ const Structure = (() => {
   // wären zwar nicht verloren (der ZIP-Export legt sie unter „Ohne Zuordnung" ab), im Baum
   // aber unsichtbar – die Position stünde auf 0/1, obwohl das Foto existiert. Zugeordnet
   // wird mit denselben Regeln wie beim Zusammenführen (Merge.resolveNode): führende
-  // Nummern-Präfixe, Umlaute und Trennzeichen spielen keine Rolle.
-  // Liefert { verschoben, positionen, offen, offenPrior } für die Rückmeldung an den Techniker.
+  // Nummern-Präfixe, Umlaute und Trennzeichen spielen keine Rolle. Bilder ohne passende
+  // neue Position bleiben als eigener Name „aus alter Vorlage" an ihrer alten Stelle.
+  // Liefert { verschoben, positionen, offen, offenPrior } für die Rückmeldung an den Techniker;
+  // offen = Bilder, die unter „aus alter Vorlage" weitergeführt werden.
   async function uebernehmeStruktur(job, nodes, label) {
     const alt = new Map(getMerged().map((n) => [n.key, n]));
     job.structure = nodes;
@@ -142,6 +144,11 @@ const Structure = (() => {
   }
 
   async function umzug(job, alt) {
+    // Positionen „aus alter Vorlage" (siehe unten) bei jedem Wechsel neu bewerten: Passt
+    // eine davon jetzt wieder zu einer Vorlagenposition, sollen ihre Bilder dorthin
+    // umziehen, statt auf ewig im Ersatz-Namen zu hängen. Was weiter keinen Platz findet,
+    // wird unten wieder als „aus alter Vorlage" angelegt.
+    job.customNames = (job.customNames || []).filter((c) => c.source !== 'alt');
     const neu = getMerged();
     const bekannt = new Set(neu.map((n) => n.key));
     const index = Merge.buildNodeIndex(neu);
@@ -165,7 +172,21 @@ const Structure = (() => {
     for (const [key, fotos] of proKey) {
       if (bekannt.has(key)) continue;
       const neuerKey = ziel(key);
-      if (!neuerKey) { offen += fotos.length; continue; }
+      if (!neuerKey) {
+        // Keine passende Position mehr: Die Bilder nicht unsichtbar werden lassen, sondern
+        // an ihrer alten Stelle als eigenen Namen „aus alter Vorlage" weiterführen. So
+        // bleiben sie im Baum, lassen sich ansehen, löschen und exportieren wie gewohnt.
+        const n = alt.get(key) || nodeAusKey(key);
+        job.customNames.push({
+          key, ober: n.ober || 'Allgemein', unter: n.unter || null, bildname: n.bildname || key,
+          // Nicht mehr gefordert: Pflicht höchstens so hoch wie die vorhandenen Bilder, damit
+          // die Position als erledigt zählt und keine offenen Punkte vortäuscht.
+          pflicht: Math.max(1, Math.min(n.pflicht || 1, fotos.length)),
+          source: 'alt',
+        });
+        offen += fotos.length;
+        continue;
+      }
       for (const p of fotos) {
         p.nodeKey = neuerKey;
         await DB.updatePhoto(p);
@@ -346,11 +367,12 @@ const Structure = (() => {
     for (const c of custom) {
       if (map.has(c.key)) continue; // von der Vorlage überlagert – dort gewinnt die Vorlage
       // Herkunft hier einmalig normalisieren, statt sie überall einzeln zu prüfen:
-      // Alles, was in customNames steht, ist selbst angelegt ('custom') oder beim
-      // Zusammenführen übernommen ('merge'). Ältere App-Versionen könnten das Feld gar
+      // Alles, was in customNames steht, ist selbst angelegt ('custom'), beim
+      // Zusammenführen übernommen ('merge') oder beim Vorlagenwechsel ohne neue Position
+      // geblieben ('alt', siehe umzug). Ältere App-Versionen könnten das Feld gar
       // nicht oder abweichend gesetzt haben – dann gilt 'custom'. Nur so bekommen auch
       // Altbestände aus laufenden Aufträgen ihr Abzeichen und ihren Löschknopf.
-      map.set(c.key, (c.source === 'custom' || c.source === 'merge')
+      map.set(c.key, (c.source === 'custom' || c.source === 'merge' || c.source === 'alt')
         ? c
         : Object.assign({}, c, { source: 'custom' }));
     }

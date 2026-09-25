@@ -725,7 +725,7 @@ const App = (() => {
       teile.push(`${bericht.verschoben} Bild(er) umgezogen`
         + (bericht.positionen ? ` (${bericht.positionen} Position(en))` : ''));
     }
-    if (bericht.offen) teile.push(`⚠ ${bericht.offen} Bild(er) ohne Zuordnung – im ZIP unter „Ohne Zuordnung"`);
+    if (bericht.offen) teile.push(`⚠ ${bericht.offen} Bild(er) ohne neue Position – behalten unter „aus alter Vorlage"`);
     if (bericht.offenPrior) teile.push(`⚠ ${bericht.offenPrior} Vorteam-Bild(er) ohne Zuordnung`);
     return teile.length ? ' · ' + teile.join(' · ') : '';
   }
@@ -796,6 +796,8 @@ const App = (() => {
   const ORIGIN = {
     custom: { cls: 'custom', text: 'eigen', short: 'eigen', title: 'selbst angelegt – kann gelöscht werden' },
     merge: { cls: 'merge', text: 'von Kollege', short: 'Kollege', title: 'über „Beiträge zusammenführen" dazugekommen' },
+    alt: { cls: 'alt', text: 'aus alter Vorlage', short: 'alte Vorlage',
+      title: 'gibt es in der aktuellen Vorlage nicht mehr – die Bilder wurden behalten' },
   };
   const originOf = (n) => ORIGIN[n && n.source] || null;
   const isOwnNode = (n) => !!originOf(n);
@@ -810,7 +812,8 @@ const App = (() => {
   // ohne Sammel-Löschknopf – sonst ließen sich darüber Vorlagenpositionen mitlöschen.
   function folderOrigin(nodes) {
     if (!nodes.length || !nodes.every(isOwnNode)) return null;
-    return nodes.some((n) => n.source === 'merge') ? ORIGIN.merge : ORIGIN.custom;
+    if (nodes.some((n) => n.source === 'merge')) return ORIGIN.merge;
+    return nodes.every((n) => n.source === 'alt') ? ORIGIN.alt : ORIGIN.custom;
   }
 
   // Entfernt eigene Positionen restlos: Fotos, Eintrag in customNames, übernommene
@@ -841,9 +844,17 @@ const App = (() => {
   const bildText = (n) => n === 1 ? '1 Bild wird' : `${n} Bilder werden`;
   // Hinweis nur zeigen, wenn es überhaupt Bilder gibt – sonst widerspricht er dem Satz
   // „Es hängen keine Bilder daran".
-  const fremdHinweis = (o, fotos) => (o === ORIGIN.merge && fotos > 0)
-    ? '<p class="hint">Achtung: Diese Bilder stammen von einem Kollegen und wurden über „Beiträge zusammenführen" übernommen.</p>'
-    : '';
+  const fremdHinweis = (o, fotos) => {
+    if (!(fotos > 0)) return '';
+    if (o === ORIGIN.merge) {
+      return '<p class="hint">Achtung: Diese Bilder stammen von einem Kollegen und wurden über „Beiträge zusammenführen" übernommen.</p>';
+    }
+    if (o === ORIGIN.alt) {
+      return '<p class="hint">Achtung: Diese Bilder wurden unter der alten Vorlage aufgenommen. '
+        + 'Sind sie noch nicht per ZIP gesichert, sind sie danach endgültig weg.</p>';
+    }
+    return '';
+  };
 
   async function deleteCustomNameFlow(node) {
     const o = originOf(node);
@@ -1485,7 +1496,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v48'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v49'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
