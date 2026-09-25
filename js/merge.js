@@ -466,5 +466,8 @@ const Merge = (() => {
     return { added, skipped, missing, addedNodes, unbekannt, strukturUebernommen, jobNeu, gewechselt, wurzel, kopfFelder };
   }
 
-  return { importContributionZip, zipInhalt };
+  // Zuordnung auch für template.js: dort ziehen beim Vorlagenwechsel die Bilder eines
+  // umbenannten Ordners mit um (siehe Structure.uebernehmeStruktur) – nach genau denselben
+  // Regeln wie hier, damit „01_Kassenzone" und „Kassenzone" überall dasselbe bedeuten.
+  return { importContributionZip, zipInhalt, normPart, buildNodeIndex, resolveNode };
 })();

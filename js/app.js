@@ -124,13 +124,13 @@ const App = (() => {
   }
 
   // Bestätigungs-Dialog. Liefert ein Promise<boolean> (true = bestätigt).
-  function openConfirm(title, html, okLabel, danger) {
+  function openConfirm(title, html, okLabel, danger, cancelLabel) {
     return new Promise((resolve) => {
       $('#modalTitle').textContent = title;
       $('#modalBody').innerHTML = html;
       const cancel = $('#modalCancel'), ok = $('#modalOk'), overlay = $('#modalOverlay');
       cancel.hidden = false;
-      cancel.textContent = 'Abbrechen';
+      cancel.textContent = cancelLabel || 'Abbrechen';
       ok.textContent = okLabel || 'OK';
       ok.classList.toggle('danger', !!danger);
       overlay.hidden = false;
@@ -138,6 +138,7 @@ const App = (() => {
         overlay.hidden = true;
         ok.classList.remove('danger');
         ok.textContent = 'OK';
+        cancel.textContent = 'Abbrechen';
         overlay.onclick = null;
         resolve(val);
       };
@@ -638,6 +639,68 @@ const App = (() => {
     }
 
     populateTemplateSelect(selected);
+    // Einmal beim Öffnen erklären, warum oben eine gesperrte Vorlage steht.
+    if (vorlageFehlt(selected)) {
+      toast(`Vorlage „${selected}" gibt es nicht mehr. Dein Auftrag behält alle Positionen und `
+        + 'Bilder. Oben eine neue Vorlage wählen – Bilder und Zähler ziehen mit um.', 6000);
+    }
+    await pruefeVorlagenUpdate();
+  }
+
+  // Mit dem App-Update kommt auch eine neue templates.xlsx aufs Handy. In laufende Aufträge
+  // wandert sie aber NICHT von allein: Die Struktur mitten im Einsatz auszutauschen wäre
+  // eine Überraschung, und ein versehentlich hochgeladener Stand träfe sonst sofort alle.
+  // Deshalb hier ein Hinweis mit zwei Knöpfen. Ohne eigene Bilder ist nichts zu verlieren –
+  // dann wird die neue Fassung stillschweigend übernommen.
+  async function pruefeVorlagenUpdate() {
+    let info = null;
+    try {
+      info = await Structure.neueFassung(currentJob);
+    } catch (e) {
+      console.warn('Vorlagen-Fassung nicht prüfbar (offline?):', e);
+      return;   // offline ist kein Fehler: es bleibt einfach beim aktuellen Stand
+    }
+    if (!info) return;
+    const jobId = currentJob && currentJob.id;
+    try {
+      const fotos = await DB.getBilddokuPhotos(jobId);
+      if (!fotos.length) {
+        const { bericht } = await Structure.uebernehmeFassung(info);
+        if (!currentJob || currentJob.id !== jobId) return;   // inzwischen Auftrag gewechselt
+        await renderTree();
+        toast(`Vorlage „${info.name}" auf den neuesten Stand gebracht` + umzugText(bericht), 4200);
+        return;
+      }
+      const aenderung = [
+        info.dazu ? `<b>${info.dazu}</b> Position(en) mehr` : '',
+        info.weg ? `<b>${info.weg}</b> Position(en) weniger oder umbenannt` : '',
+      ].filter(Boolean).join(' · ') || 'kleine Änderungen (z. B. Pflichtanzahl)';
+      const ok = await openConfirm('Neue Fassung der Vorlage',
+        `<p>Für „${escHtml(info.name)}" gibt es eine neue Fassung: ${aenderung}.</p>
+         <p>Deine Bilder, Zähler und „nicht benötigt"-Markierungen ziehen dabei mit um.</p>
+         <p class="hint">„Später" fragt erst wieder, wenn eine weitere Fassung kommt.</p>`,
+        'Jetzt übernehmen', false, 'Später');
+      if (!currentJob || currentJob.id !== jobId) return;
+      if (!ok) { await Structure.spaeter(info); return; }
+      const { bericht } = await Structure.uebernehmeFassung(info);
+      await renderTree();
+      populateTemplateSelect(info.name);
+      toast(`Vorlage „${info.name}" aktualisiert` + umzugText(bericht), 4200);
+    } catch (e) {
+      console.error('Vorlagen-Update fehlgeschlagen:', e);
+      toast('Vorlage konnte nicht aktualisiert werden');
+    }
+  }
+
+  // Der gespeicherte Vorlagenname existiert im Katalog nicht mehr: umbenanntes oder
+  // entferntes Tab in templates.xlsx. Der Auftrag behält seine Struktur, nachladen lässt
+  // sich diese Vorlage aber nicht mehr – deshalb als „nicht mehr verfügbar" anzeigen und
+  // sperren, statt beim Antippen mit „Vorlage konnte nicht geladen werden" abzubrechen.
+  // Nur bei geladenem Katalog: offline ist die Liste leer, dann ist nichts „verschwunden".
+  function vorlageFehlt(name) {
+    return !!name && !!(catalogNames && catalogNames.length)
+      && catalogNames.indexOf(name) === -1
+      && name !== Structure.EXTERNAL_LABEL && name !== Structure.HANDOVER_LABEL;
   }
 
   function populateTemplateSelect(selected) {
@@ -645,9 +708,26 @@ const App = (() => {
     const names = (catalogNames || []).slice();
     // „Eigener Import" als Option zeigen, falls aktiv und nicht im Katalog.
     if (selected && selected !== '' && names.indexOf(selected) === -1) names.unshift(selected);
-    sel.innerHTML = names.map((n) =>
-      `<option value="${escAttr(n)}"${n === selected ? ' selected' : ''}>${escHtml(n)}</option>`).join('');
+    sel.innerHTML = names.map((n) => {
+      const fehlt = n === selected && vorlageFehlt(n);
+      return `<option value="${escAttr(n)}"${n === selected ? ' selected' : ''}${fehlt ? ' disabled' : ''}>`
+        + escHtml(n) + (fehlt ? ' (nicht mehr verfügbar)' : '') + '</option>';
+    }).join('');
     if (!names.length) sel.innerHTML = '<option value="">— keine Vorlage —</option>';
+  }
+
+  // Rückmeldung zum Umzug beim Vorlagenwechsel (siehe Structure.uebernehmeStruktur).
+  // Umbenannte Ordner/Namen sind der Normalfall; nur was übrig bleibt, muss auffallen.
+  function umzugText(bericht) {
+    if (!bericht) return '';
+    const teile = [];
+    if (bericht.verschoben) {
+      teile.push(`${bericht.verschoben} Bild(er) umgezogen`
+        + (bericht.positionen ? ` (${bericht.positionen} Position(en))` : ''));
+    }
+    if (bericht.offen) teile.push(`⚠ ${bericht.offen} Bild(er) ohne Zuordnung – im ZIP unter „Ohne Zuordnung"`);
+    if (bericht.offenPrior) teile.push(`⚠ ${bericht.offenPrior} Vorteam-Bild(er) ohne Zuordnung`);
+    return teile.length ? ' · ' + teile.join(' · ') : '';
   }
 
   async function onTemplateChange() {
@@ -655,9 +735,11 @@ const App = (() => {
     if (!name || name === Structure.EXTERNAL_LABEL || name === Structure.HANDOVER_LABEL) return;
     toast('Lade Vorlage…');
     try {
-      await Structure.importFromCatalog(name);
+      const { bericht } = await Structure.importFromCatalog(name);
       await renderTree();
-      toast('Vorlage „' + name + '" geladen');
+      // Liste neu aufbauen: der alte, nicht mehr vorhandene Name verschwindet damit.
+      populateTemplateSelect(name);
+      toast('Vorlage „' + name + '" geladen' + umzugText(bericht), 4200);
     } catch (e) {
       console.error(e);
       toast('Vorlage konnte nicht geladen werden');
@@ -667,15 +749,16 @@ const App = (() => {
   async function refreshCatalog() {
     toast('Aktualisiere Vorlagen…');
     try {
-      catalogNames = await Structure.listTemplates();
+      catalogNames = await Structure.listTemplates(true);   // Datei wirklich neu laden
       const selected = await Structure.getSelectedTemplate();
       // Aktuell gewählte Vorlage neu einlesen (falls Tab geändert wurde).
+      let bericht = null;
       if (selected && catalogNames.indexOf(selected) !== -1) {
-        await Structure.importFromCatalog(selected);
+        bericht = (await Structure.importFromCatalog(selected)).bericht;
         await renderTree();
       }
       populateTemplateSelect(selected);
-      toast(catalogNames.length + ' Vorlage(n) verfügbar');
+      toast(catalogNames.length + ' Vorlage(n) verfügbar' + umzugText(bericht), 4200);
     } catch (e) {
       console.error(e);
       toast('Aktualisieren fehlgeschlagen (offline?)');
@@ -1099,10 +1182,10 @@ const App = (() => {
     e.target.value = '';
     if (!file) return;
     try {
-      const nodes = await Structure.importFile(file);
+      const { nodes, bericht } = await Structure.importFile(file);
       await renderTree();
       populateTemplateSelect(Structure.EXTERNAL_LABEL);
-      toast(`Eigene Vorlage importiert: ${nodes.length} Positionen`);
+      toast(`Eigene Vorlage importiert: ${nodes.length} Positionen${umzugText(bericht)}`, 4200);
     } catch (err) {
       console.error(err);
       toast('Import fehlgeschlagen: ' + (err.message || err));
@@ -1402,7 +1485,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v44'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v48'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
@@ -1551,15 +1634,17 @@ const App = (() => {
         : 'Im Paket steht nur die Nummer (aus den Bilddateien gelesen).';
       // Gibt es die Baustelle hier schon, dorthin wechseln statt einen zweiten Auftrag
       // derselben Filiale anzulegen – sonst fotografiert man womöglich in den falschen.
-      // Nur beim ZIP: die Übergabe-Datei wählt ihr Ziel selbst (über die Auftrags-id).
+      // Auch für die Übergabe-Datei: die findet ihren Auftrag sonst nur über die
+      // Auftrags-id und legt einen zweiten an, wenn die Baustelle hier von Hand entstand.
       const zipImport = !(info && info.xlsx);
-      const vorhanden = !zipImport ? null : (await DB.listJobs())
+      const vorhanden = (await DB.listJobs())
         .find((j) => j.id !== ziel.id && filialNr((j.header || {}).filiale) === nrPaket) || null;
       const optionen = [];
       if (vorhanden) {
         optionen.push({ key: 'wechseln', emoji: '🔁',
           titel: `Zu Auftrag „${vorhanden.name || vorhanden.header.filiale}" wechseln`,
-          sub: 'Paket dort einlesen – dieser Auftrag bleibt unverändert' });
+          sub: (zipImport ? 'Paket dort einlesen – Bilder und Stand kommen dazu' : 'Stand dort einlesen – Zähler kommen dazu')
+            + ', nichts wird überschrieben. Dieser Auftrag bleibt unverändert.' });
       } else if (neuerAuftrag || paket.hatUebergabe) {
         optionen.push({ key: 'neu', emoji: '🆕',
           titel: `Neuen Auftrag für Filiale ${nrPaket} anlegen`,
@@ -1584,6 +1669,9 @@ const App = (() => {
       if (!wahl) return null;
       if (wahl === 'neu') return { kopfFelder: [], ziel: 'neu' };
       if (wahl === 'wechseln') {
+        // Die Übergabe-Datei liest weich in den vorhandenen Auftrag ein und lässt dessen
+        // Projektkopf ohnehin unangetastet – dann ist auch nichts gegenüberzustellen.
+        if (!zipImport) return { kopfFelder: [], ziel: 'wechseln', zielJob: vorhanden };
         // Ab hier gilt der vorhandene Auftrag als Ziel – Stammdaten gegen DEN vergleichen.
         antwort = { kopfFelder: [], ziel: 'wechseln', zielJob: vorhanden };
         eigen = vorhanden.header || {};
@@ -1684,8 +1772,12 @@ const App = (() => {
     toast('Lese Übergabe-Datei…');
     const vorher = currentJob;
     try {
-      const job = await Handover.importXlsx(file, { pruefen: pruefeHerkunft });
-      if (!job) { toast('Import abgebrochen – nichts verändert.'); return; }
+      // Offene Eingaben gehören noch zum bisherigen Auftrag – der Import wechselt gleich.
+      await flushDiary();
+      await Vorpruefung.flush();
+      const r = await Handover.importXlsx(file, { pruefen: pruefeHerkunft });
+      if (!r) { toast('Import abgebrochen – nichts verändert.'); return; }
+      const job = r.job;
       await adoptJob(job);
       const entfernt = await entferneLeerenVorlaeufer(vorher, job);
       // Dort bleiben, wo der Import gestartet wurde: Wer aus der Bilddoku heraus importiert,
@@ -1693,7 +1785,7 @@ const App = (() => {
       if (aktiveView === 'view-bilddoku') await enterBilddoku();
       else show('view-start');
       await loadStartView();
-      toast('Auftrag übernommen: ' + (job.name || '')
+      toast((r.gewechselt ? 'Stand übernommen in: ' : 'Auftrag übernommen: ') + (job.name || '')
         + (entfernt ? ' · leerer Auftrag entfernt' : ''), 4200);
     } catch (err) {
       console.error(err);

@@ -59,6 +59,10 @@ const Structure = (() => {
     await loadExcelJS();
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(arrayBuffer);
+    return parseSheet(wb, sheetName);
+  }
+
+  function parseSheet(wb, sheetName) {
     const ws = sheetName ? wb.getWorksheet(sheetName) : wb.worksheets[0];
     if (!ws) throw new Error('Vorlage/Tab nicht gefunden: ' + (sheetName || '(erstes Blatt)'));
 
@@ -110,15 +114,111 @@ const Structure = (() => {
     return nodes;
   }
 
+  // Tauscht die Vorlage des Auftrags aus und nimmt alles mit, was an den alten Positionen
+  // hängt. Nötig, weil der Schlüssel eines Bildes aus Ober␟Unter␟Bildname besteht: wird in
+  // der Vorlage „Kassenzone" zu „01_Kassenzone", passte kein Schlüssel mehr. Die Bilder
+  // wären zwar nicht verloren (der ZIP-Export legt sie unter „Ohne Zuordnung" ab), im Baum
+  // aber unsichtbar – die Position stünde auf 0/1, obwohl das Foto existiert. Zugeordnet
+  // wird mit denselben Regeln wie beim Zusammenführen (Merge.resolveNode): führende
+  // Nummern-Präfixe, Umlaute und Trennzeichen spielen keine Rolle.
+  // Liefert { verschoben, positionen, offen, offenPrior } für die Rückmeldung an den Techniker.
+  async function uebernehmeStruktur(job, nodes, label) {
+    const alt = new Map(getMerged().map((n) => [n.key, n]));
+    job.structure = nodes;
+    job.selectedTemplate = label;
+    // Fassung festhalten: daran erkennt die App später, ob eine neue Vorlage bereitsteht.
+    job.templateStand = fingerprint(nodes);
+    delete job.templateSpaeter;
+    const bericht = await umzug(job, alt);
+    await App.saveCurrentJob();
+    return bericht;
+  }
+
+  // Zerlegt einen Schlüssel, dessen Knoten es nicht mehr gibt (z. B. Bilder aus einer
+  // Vorlage, die schon vor diesem Wechsel ausgetauscht wurde).
+  function nodeAusKey(key) {
+    const t = String(key).split(SEP);
+    return { nodeKey: key, ober: t[0] || '', unter: t[1] || null, bildname: t[2] || '' };
+  }
+
+  async function umzug(job, alt) {
+    const neu = getMerged();
+    const bekannt = new Set(neu.map((n) => n.key));
+    const index = Merge.buildNodeIndex(neu);
+    // fremdCount entfällt: die alten Positionen sind die eigenen von eben, ein Bildname
+    // kommt dort höchstens einmal vor.
+    const ziel = (key) => {
+      if (bekannt.has(key)) return null;                   // Position gibt es weiter
+      const n = Merge.resolveNode(alt.get(key) || nodeAusKey(key), index, null);
+      return n && n.key !== key ? n.key : null;
+    };
+
+    let verschoben = 0, offen = 0;
+    const neuZuNummerieren = new Set();
+
+    // 1) Bilder
+    const proKey = new Map();
+    for (const p of await DB.getBilddokuPhotos(job.id)) {
+      if (!proKey.has(p.nodeKey)) proKey.set(p.nodeKey, []);
+      proKey.get(p.nodeKey).push(p);
+    }
+    for (const [key, fotos] of proKey) {
+      if (bekannt.has(key)) continue;
+      const neuerKey = ziel(key);
+      if (!neuerKey) { offen += fotos.length; continue; }
+      for (const p of fotos) {
+        p.nodeKey = neuerKey;
+        await DB.updatePhoto(p);
+      }
+      verschoben += fotos.length;
+      neuZuNummerieren.add(neuerKey);
+    }
+
+    // 2) Zähler des Vorteams. Ein Zähler ohne neue Position bleibt bewusst stehen: er
+    //    wirkt nirgends mehr, lebt aber wieder auf, sobald die Position zurückkommt
+    //    (z. B. nach einem Tippfehler in der Vorlage). Gemeldet wird er trotzdem.
+    const prior = job.priorCounts || {};
+    let offenPrior = 0;
+    for (const key of Object.keys(prior)) {
+      if (bekannt.has(key)) continue;
+      const neuerKey = ziel(key);
+      if (!neuerKey) { offenPrior += prior[key]; continue; }
+      prior[neuerKey] = Math.max(prior[neuerKey] || 0, prior[key]);
+      delete prior[key];
+      neuZuNummerieren.add(neuerKey);
+    }
+
+    // 3) „nicht benötigt" – einzelne Positionen und ganze Ordner
+    const s = job.skipped || {};
+    if (s.nodes) s.nodes = s.nodes.map((k) => ziel(k) || k);
+    const ordnerZiel = (alteNamen, neueNamen) => {
+      const norm = new Map(neueNamen.map((n) => [Merge.normPart(n), n]));
+      return (alteNamen || []).map((a) => (neueNamen.includes(a) ? a : (norm.get(Merge.normPart(a)) || a)));
+    };
+    if (s.obers) s.obers = ordnerZiel(s.obers, neu.map((n) => n.ober));
+    if (s.unters) {
+      s.unters = ordnerZiel(s.unters, neu.filter((n) => n.unter).map((n) => unterKey(n.ober, n.unter)));
+    }
+
+    // 4) Nummerierung der Zielpositionen lückenlos machen: dort treffen jetzt umgezogene
+    //    und eventuell schon vorhandene Bilder aufeinander.
+    for (const key of neuZuNummerieren) {
+      await DB.renumberNode(job.id, key, prior[key] || 0);
+    }
+    const positionen = neuZuNummerieren.size;
+    if (verschoben || offen || offenPrior) {
+      console.info(`Vorlagenwechsel: ${verschoben} Bild(er) umgezogen, ${offen} ohne Zuordnung, `
+        + `${offenPrior} Vorteam-Zähler ohne Zuordnung.`);
+    }
+    return { verschoben, positionen, offen, offenPrior };
+  }
+
   // Importiert eine externe .xlsx-Datei (erstes Blatt). Markiert „Eigener Import".
   async function importFile(file) {
     const buf = await file.arrayBuffer();
     const nodes = await parseWorkbook(buf);
-    const job = App.getCurrentJob();
-    job.structure = nodes;
-    job.selectedTemplate = EXTERNAL_LABEL;
-    await App.saveCurrentJob();
-    return nodes;
+    const bericht = await uebernehmeStruktur(App.getCurrentJob(), nodes, EXTERNAL_LABEL);
+    return { nodes, bericht };
   }
 
   const EXTERNAL_LABEL = '(Eigener Import)';
@@ -143,25 +243,91 @@ const Structure = (() => {
     return resp.arrayBuffer();
   }
 
-  // Liefert die Liste der verfügbaren Vorlagen (Tab-Namen aus templates.xlsx).
-  async function listTemplates() {
+  // Geöffnete Vorlagen-Sammlung kurz vorhalten: Beim Betreten der Bilddoku braucht sie
+  // die Namensliste, gleich danach die Prüfung auf eine neue Fassung und beim Übernehmen
+  // noch einmal dieselbe Datei. Ohne diesen Puffer wäre das dreimal Laden und Parsen.
+  let _katalog = null;   // { wb, zeit }
+  const KATALOG_TTL = 120000;
+
+  async function katalogWorkbook(frisch) {
+    if (!frisch && _katalog && Date.now() - _katalog.zeit < KATALOG_TTL) return _katalog.wb;
     await loadExcelJS();
-    const buf = await fetchCatalogBuffer();
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buf);
+    await wb.xlsx.load(await fetchCatalogBuffer());
+    _katalog = { wb, zeit: Date.now() };
+    return wb;
+  }
+
+  // Liefert die Liste der verfügbaren Vorlagen (Tab-Namen aus templates.xlsx).
+  // frisch = true erzwingt das Neuladen der Datei (Knopf „↻ Vorlagen aktualisieren").
+  async function listTemplates(frisch) {
+    const wb = await katalogWorkbook(frisch);
     return wb.worksheets.map((ws) => ws.name);
+  }
+
+  // Kennung einer Vorlagen-Fassung: ändert sich, sobald eine Position dazukommt, wegfällt,
+  // umbenannt wird oder eine andere Pflichtanzahl bekommt. Bewusst aus den Daten berechnet –
+  // so muss in der Excel keine Versionsnummer gepflegt werden.
+  function fingerprint(nodes) {
+    const text = (nodes || []).map((n) => n.key + '|' + n.pflicht).sort().join('\n');
+    let h = 5381;
+    for (let i = 0; i < text.length; i++) h = (((h << 5) + h) ^ text.charCodeAt(i)) >>> 0;
+    return 'f' + h.toString(36) + '-' + (nodes || []).length;
+  }
+
+  // Gibt es für die Vorlage dieses Auftrags eine neue Fassung? Liefert null (nichts zu tun)
+  // oder { name, nodes, stand, dazu, weg }.
+  // Übersprungen wird: eigener Import, Struktur aus einem Paket („Aus Übergabe" oder ein
+  // übernommener Auftrag – dort ist der Stand des Vorteams maßgeblich, nicht die Vorlage)
+  // und eine Fassung, die der Techniker schon auf „Später" gesetzt hat.
+  async function neueFassung(job) {
+    const name = job && job.selectedTemplate;
+    if (!name || name === EXTERNAL_LABEL || name === HANDOVER_LABEL) return null;
+    const wb = await katalogWorkbook(false);
+    if (!wb.getWorksheet(name)) return null;          // Vorlage umbenannt/entfernt
+    const nodes = parseSheet(wb, name);
+    const stand = fingerprint(nodes);
+    if (job.templateStand === stand || job.templateSpaeter === stand) return null;
+    if (!job.templateStand) {
+      // Auftrag aus einer Zeit ohne gespeicherte Kennung. Stimmt seine Struktur mit der
+      // Vorlage überein, nur die Kennung nachtragen – sonst käme ein Hinweis ohne Anlass.
+      if (fingerprint(job.structure || []) === stand) {
+        job.templateStand = stand;
+        await App.saveCurrentJob();
+        return null;
+      }
+      // Struktur aus einem fremden Paket: die darf eine Vorlage nicht überschreiben.
+      if (job.uebernommen) return null;
+    }
+    const alt = new Set((job.structure || []).map((n) => n.key));
+    const neuKeys = new Set(nodes.map((n) => n.key));
+    return {
+      name, nodes, stand,
+      dazu: nodes.filter((n) => !alt.has(n.key)).length,
+      weg: Array.from(alt).filter((k) => !neuKeys.has(k)).length,
+    };
+  }
+
+  // „Jetzt übernehmen" aus dem Hinweis: identisch zum Wechsel über das Auswahlfeld.
+  async function uebernehmeFassung(info) {
+    const bericht = await uebernehmeStruktur(App.getCurrentJob(), info.nodes, info.name);
+    return { nodes: info.nodes, bericht };   // gleiche Form wie importFromCatalog
+  }
+
+  // „Später": genau diese Fassung nicht mehr anbieten. Kommt eine neuere, meldet sich die
+  // App wieder – die Kennung ist dann eine andere.
+  async function spaeter(info) {
+    const job = App.getCurrentJob();
+    job.templateSpaeter = info.stand;
+    await App.saveCurrentJob();
   }
 
   // Importiert eine Vorlage aus der Sammlung anhand des Tab-Namens.
   // Ersetzt nur die Struktur des Auftrags; eigene Namen bleiben erhalten.
   async function importFromCatalog(sheetName) {
-    const buf = await fetchCatalogBuffer();
-    const nodes = await parseWorkbook(buf, sheetName);
-    const job = App.getCurrentJob();
-    job.structure = nodes;
-    job.selectedTemplate = sheetName;
-    await App.saveCurrentJob();
-    return nodes;
+    const nodes = parseSheet(await katalogWorkbook(false), sheetName);
+    const bericht = await uebernehmeStruktur(App.getCurrentJob(), nodes, sheetName);
+    return { nodes, bericht };
   }
 
   async function getSelectedTemplate() {
@@ -206,6 +372,7 @@ const Structure = (() => {
 
   return {
     SEP, makeKey, unterKey, isSkipped, parseWorkbook, importFile, addCustomName, getMerged, groupForDisplay,
+    uebernehmeStruktur, neueFassung, uebernehmeFassung, spaeter,
     listTemplates, importFromCatalog, getSelectedTemplate, EXTERNAL_LABEL, HANDOVER_LABEL, loadExcelJS,
   };
 })();

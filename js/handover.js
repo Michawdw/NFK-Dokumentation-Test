@@ -298,6 +298,10 @@ const Handover = (() => {
   //                  zufällig auseinanderlaufen.
   //   opts.mapKey    (row) => eigener Schlüssel oder null. Übersetzt die Positionen des
   //                  Kollegen auf die eigenen (siehe resolveNode in merge.js).
+  //   opts.fotosAbziehen  nur mit opts.soft: Bilder, die hier schon liegen, aus den Zählern
+  //                  des Pakets herausrechnen (sonst stünde 4/1 statt 2/1). Gebraucht beim
+  //                  Wechsel in einen vorhandenen Auftrag derselben Filiale – dort sind die
+  //                  eigenen Bilder im Stand des Absenders oft schon enthalten.
   async function applyHandoverData(kv, rows, opts) {
     const o = opts || {};
     if (!rows || rows.length === 0) throw new Error('Übergabe-Daten enthalten keine Positionen.');
@@ -391,6 +395,19 @@ const Handover = (() => {
         zusammen[k] = Math.max(priorCounts[k], alt[k] || 0);
       }
       job.priorCounts = zusammen;
+      // Eigene Bilder gegenrechnen (siehe opts.fotosAbziehen). Dieselbe Rechnung wie im
+      // harten Pfad unten: angezeigt wird prior + physisch vorhandene Bilder.
+      if (o.fotosAbziehen) {
+        const lokal = new Map();
+        for (const p of await DB.getBilddokuPhotos(job.id)) {
+          lokal.set(p.nodeKey, (lokal.get(p.nodeKey) || 0) + 1);
+        }
+        for (const [key, anzahl] of lokal) {
+          const prior = Math.max(0, (job.priorCounts[key] || 0) - anzahl);
+          if (prior > 0) job.priorCounts[key] = prior; else delete job.priorCounts[key];
+          await DB.renumberNode(job.id, key, prior); // lückenlos: prior+1 … prior+n
+        }
+      }
     } else {
       job.priorCounts = priorCounts;
       // Bereits vorhandene Bilder gegenrechnen: landet die Übergabe-Datei in einem
@@ -433,8 +450,10 @@ const Handover = (() => {
   }
 
   // Liest eine Übergabe-Datei und legt daraus einen Auftrag an / aktualisiert ihn.
-  //   opts.pruefen  (paket, zielAuftrag, info) => null (abbrechen) | { kopfFelder }
+  //   opts.pruefen  (paket, zielAuftrag, info) => null (abbrechen)
+  //                 | { kopfFelder, ziel: 'aktuell' | 'neu' | 'wechseln', zielJob }
   //                 Wird vor jedem Schreibzugriff aufgerufen (wie beim ZIP-Import).
+  // Rückgabe: null (abgebrochen) | { job, gewechselt }
   async function importXlsx(file, opts) {
     const o = opts || {};
     await Structure.loadExcelJS();
@@ -455,10 +474,18 @@ const Handover = (() => {
         bestehend || App.getCurrentJob() || null,
         { neu: !bestehend, xlsx: true });
       if (!antwort) return null; // abgebrochen – es wurde nichts geschrieben
+      // Die Baustelle gibt es hier schon unter einer anderen Auftrags-id (z. B. von Hand
+      // angelegt). Dann in DIESEN Auftrag einlesen, statt einen zweiten für dieselbe Filiale
+      // anzulegen. Weich: eigener Projektkopf und eigene Marken bleiben, Zähler nur erhöhen.
+      if (antwort.ziel === 'wechseln' && antwort.zielJob) {
+        const r = await applyHandoverData(daten.kv, daten.rows,
+          { job: antwort.zielJob, soft: true, fotosAbziehen: true });
+        return { job: r.job, gewechselt: true };
+      }
     }
 
     const r = await applyHandoverData(daten.kv, daten.rows);
-    return r.job;
+    return { job: r.job, gewechselt: false };
   }
 
   return {
