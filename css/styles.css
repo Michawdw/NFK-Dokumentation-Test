@@ -497,6 +497,10 @@ fieldset.techs legend { font-weight: 700; padding: 0 6px; }
 .wb-seg.viele .vp-opt { flex: 1 1 calc(50% - 8px); font-size: 15px; padding: 6px 8px; }
 .vp-seg .vp-opt.active.mid { background: #d98c00; border-color: #d98c00; color: #fff; }
 .wb-detail { margin-top: 12px; }
+/* Textfelder: feste Mindesthöhe, wachsen mit dem Text (autoHoehe in wochenbericht.js).
+   Kein Zieh-Griff – der ließ sich beim Scrollen versehentlich greifen. */
+textarea.wb-auto { resize: none; overflow: hidden; min-height: 88px; line-height: 1.4; }
+textarea.wb-notiztext { min-height: 66px; }
 .wb-unter { margin-top: 12px; padding: 10px 12px; border-left: 3px solid var(--brand-light); background: rgba(31,78,120,.04); border-radius: 0 10px 10px 0; }
 .wb-uq { font-weight: 600; font-size: 14px; margin-bottom: 8px; }
 .wb-fotos { margin-top: 12px; }

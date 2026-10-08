@@ -95,7 +95,6 @@ const Wochenbericht = (() => {
       ] },
       { id: 'd2', typ: 'fotos', titel: 'Fortschrittsbilder (freiwillig, nur zur Übersicht)', gruppen: [
         { id: 'server', label: 'Serverschränke' }, { id: 'kabel', label: 'Kabelzüge' },
-        { id: 'nws', label: 'NWS' }, { id: 'ibn', label: 'Inbetriebnahme' },
       ] },
       { id: 'd3', typ: 'wahl', titel: 'VoCoVo-Ausleuchtung übermittelt (nur zu Beginn der Baustelle)', optionen: [
         { v: 'ja', label: 'Ja', ampel: 'gruen' },
@@ -134,6 +133,7 @@ const Wochenbericht = (() => {
   ];
   const ALLE_PUNKTE = ABSCHNITTE.flatMap((s) => s.punkte);
   const PFLICHT_PUNKTE = ALLE_PUNKTE.filter((p) => p.typ !== 'fotos');
+  const D2_GRUPPEN = new Set(ALLE_PUNKTE.filter((p) => p.gruppen).flatMap((p) => p.gruppen.map((g) => p.id + '-' + g.id)));
 
   // --------------------------------------------------------- Kalenderwochen
   // ISO 8601: Woche mit dem ersten Donnerstag des Jahres ist KW 1, Wochen beginnen montags.
@@ -301,7 +301,7 @@ const Wochenbericht = (() => {
       }
     }
     await zaehleFotos();
-    await render();
+    await render(`.wb-item[data-pid="${fotoZiel.split('-')[0]}"]`);
   }
 
   async function fotosVon(pid) {
@@ -316,7 +316,11 @@ const Wochenbericht = (() => {
     const praefix = NS + current.id + '__';
     for (const p of await DB.getAllPhotos(job.id)) {
       if (typeof p.nodeKey !== 'string' || p.nodeKey.indexOf(praefix) !== 0) continue;
-      const pid = p.nodeKey.slice(praefix.length).split('-')[0];
+      const teil = p.nodeKey.slice(praefix.length);
+      const pid = teil.split('-')[0];
+      // Fotos aus nicht mehr angebotenen Fortschritts-Gruppen (NWS, Inbetriebnahme bis
+      // v50) zählen nicht mehr mit – sie bleiben gespeichert und stecken weiter im ZIP.
+      if (teil.includes('-') && !D2_GRUPPEN.has(teil)) continue;
       fotoZahl.set(pid, (fotoZahl.get(pid) || 0) + 1);
     }
   }
@@ -350,7 +354,7 @@ const Wochenbericht = (() => {
         if (!ok) return;
         await DB.deletePhotoById(ph.id);
         await zaehleFotos();
-        await render();
+        await render(`.wb-item[data-pid="${pid.split('-')[0]}"]`);
       };
       thumbs.appendChild(w);
     }
@@ -364,6 +368,13 @@ const Wochenbericht = (() => {
     ).join('') + '</div>';
   }
 
+  // Textfeld so hoch wie sein Inhalt (mindestens die CSS-Mindesthöhe). Ohne Zieh-Griff:
+  // der ließ sich beim Scrollen versehentlich greifen und das Feld auf eine Zeile stauchen.
+  function autoHoehe(ta) {
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 2 + 'px';
+  }
+
   async function karte(p) {
     const a = antwort(p.id);
     const card = document.createElement('div');
@@ -375,12 +386,12 @@ const Wochenbericht = (() => {
       const opt = p.optionen.find((o) => o.v === a.status);
       card.insertAdjacentHTML('beforeend', auswahlKnoepfe(p.optionen, a.status, p.viele));
       card.querySelectorAll('.wb-seg > .vp-opt').forEach((b) => {
-        b.onclick = async () => { a.status = b.dataset.val; await saveNow(); await render(); };
+        b.onclick = async () => { a.status = b.dataset.val; await saveNow(); await render(`.wb-item[data-pid="${p.id}"]`); };
       });
       if (opt && opt.text) {
         card.insertAdjacentHTML('beforeend', `<label class="vp-textlabel wb-detail">${escHtml(opt.text.label)}
-          <textarea class="vp-text wb-text" rows="3">${escHtml(a.text || '')}</textarea></label>`);
-        card.querySelector('.wb-text').oninput = (ev) => { a.text = ev.target.value; scheduleSave(); aktualisiere(); };
+          <textarea class="vp-text wb-auto wb-text" rows="3">${escHtml(a.text || '')}</textarea></label>`);
+        card.querySelector('.wb-text').oninput = (ev) => { a.text = ev.target.value; autoHoehe(ev.target); scheduleSave(); aktualisiere(); };
       }
       if (opt && opt.unter) {
         const u = a.unter;
@@ -389,12 +400,12 @@ const Wochenbericht = (() => {
         box.className = 'wb-unter';
         box.innerHTML = `<div class="wb-uq">${escHtml(opt.unter.titel)}</div>${auswahlKnoepfe(opt.unter.optionen, u.status)}`
           + (uo && uo.text ? `<label class="vp-textlabel wb-detail">${escHtml(uo.text.label)}
-              <textarea class="vp-text wb-utext" rows="3">${escHtml(u.text || '')}</textarea></label>` : '');
+              <textarea class="vp-text wb-auto wb-utext" rows="3">${escHtml(u.text || '')}</textarea></label>` : '');
         box.querySelectorAll('.vp-opt').forEach((b) => {
-          b.onclick = async () => { u.status = b.dataset.val; await saveNow(); await render(); };
+          b.onclick = async () => { u.status = b.dataset.val; await saveNow(); await render(`.wb-item[data-pid="${p.id}"]`); };
         });
         const ut = box.querySelector('.wb-utext');
-        if (ut) ut.oninput = (ev) => { u.text = ev.target.value; scheduleSave(); aktualisiere(); };
+        if (ut) ut.oninput = (ev) => { u.text = ev.target.value; autoHoehe(ev.target); scheduleSave(); aktualisiere(); };
         card.appendChild(box);
       }
       if (opt && opt.fotos) await fotoBlock(card, p.id, opt.fotos.label, opt.fotos.min);
@@ -403,14 +414,14 @@ const Wochenbericht = (() => {
       const hatNotiz = voll(a.notiz);
       card.insertAdjacentHTML('beforeend', `<button type="button" class="wb-notizbtn"${hatNotiz ? ' hidden' : ''}>+ Notiz</button>
         <label class="vp-textlabel wb-notiz"${hatNotiz ? '' : ' hidden'}>Notiz (freiwillig)
-          <textarea class="vp-text wb-notiztext" rows="2">${escHtml(a.notiz || '')}</textarea></label>`);
+          <textarea class="vp-text wb-auto wb-notiztext" rows="2">${escHtml(a.notiz || '')}</textarea></label>`);
       const nb = card.querySelector('.wb-notizbtn'), nl = card.querySelector('.wb-notiz');
-      nb.onclick = () => { nb.hidden = true; nl.hidden = false; nl.querySelector('textarea').focus(); };
-      nl.querySelector('textarea').oninput = (ev) => { a.notiz = ev.target.value; scheduleSave(); };
+      nb.onclick = () => { nb.hidden = true; nl.hidden = false; autoHoehe(nl.querySelector('textarea')); nl.querySelector('textarea').focus(); };
+      nl.querySelector('textarea').oninput = (ev) => { a.notiz = ev.target.value; autoHoehe(ev.target); scheduleSave(); };
     }
 
     if (p.typ === 'frei') {
-      card.insertAdjacentHTML('beforeend', `<textarea class="vp-text wb-frei" rows="3" placeholder="Eintragen …">${escHtml(a.text || '')}</textarea>
+      card.insertAdjacentHTML('beforeend', `<textarea class="vp-text wb-auto wb-frei" rows="3" placeholder="Eintragen …">${escHtml(a.text || '')}</textarea>
         <div class="toolrow wb-freibtns">
           <button type="button" class="btn ghost wb-nichts${a.nichts ? ' active' : ''}">${escHtml(p.nichts)}</button>
           ${p.ausBautagebuch ? '<button type="button" class="btn ghost wb-btb">📋 aus Bautagebuch übernehmen</button>' : ''}
@@ -419,18 +430,19 @@ const Wochenbericht = (() => {
       const nichtsBtn = card.querySelector('.wb-nichts');
       ta.oninput = () => {
         a.text = ta.value;
+        autoHoehe(ta);
         if (voll(a.text) && a.nichts) { a.nichts = false; nichtsBtn.classList.remove('active'); }
         scheduleSave(); aktualisiere();
       };
       nichtsBtn.onclick = async () => {
-        if (a.nichts) { a.nichts = false; await saveNow(); await render(); return; }
+        if (a.nichts) { a.nichts = false; await saveNow(); await render(`.wb-item[data-pid="${p.id}"]`); return; }
         if (voll(a.text)) {
           const ok = await App.openConfirm('Eintrag verwerfen?',
             `<p>„${escHtml(p.nichts)}" ersetzt den eingetragenen Text.</p>`, 'Ersetzen', true);
           if (!ok) return;
         }
         a.text = ''; a.nichts = true;
-        await saveNow(); await render();
+        await saveNow(); await render(`.wb-item[data-pid="${p.id}"]`);
       };
       const btb = card.querySelector('.wb-btb');
       if (btb) btb.onclick = () => ausBautagebuch(a);
@@ -477,12 +489,28 @@ const Wochenbericht = (() => {
     }
   }
 
-  async function render() {
+  // Neuaufbau ohne Springen: Die Liste entsteht außerhalb der Seite und ersetzt die alte
+  // in einem Schritt. Vorher wurde der Container geleert und Karte für Karte (mit Wartezeit
+  // auf die Fotos) neu befüllt – die Seite war dazwischen kurz, und der Browser schob die
+  // Ansicht nach oben. Zusätzlich bleibt das angetippte Element (Anker) auf derselben Höhe
+  // am Bildschirm, auch wenn sich darüber etwas verändert (z. B. ein Textfeld klappt auf).
+  let renderGen = 0;
+  function ankerVon(el) {
+    const k = el && el.closest && el.closest('.wb-item, .wb-sec');
+    if (!k) return null;
+    return k.classList.contains('wb-sec') ? `.wb-sec[data-sid="${k.dataset.sid}"]` : `.wb-item[data-pid="${k.dataset.pid}"]`;
+  }
+
+  async function render(anker) {
     const job = App.getCurrentJob();
     const cont = $('#wbAbschnitte');
     if (!job || !cont || !current) return;
+    const gen = ++renderGen;
     setupInputs();
-    activeUrls.forEach((u) => URL.revokeObjectURL(u));
+    const sel0 = anker || ankerVon(document.activeElement);
+    const altEl = sel0 ? document.querySelector(sel0) : null;
+    const altTop = altEl ? altEl.getBoundingClientRect().top : null;
+    const alteUrls = activeUrls;
     activeUrls = [];
 
     // KW-Auswahl und Kopf
@@ -494,7 +522,7 @@ const Wochenbericht = (() => {
     const gp = $('#wbGespraech');
     if (document.activeElement !== gp) gp.value = current.gespraechspartner || '';
 
-    cont.innerHTML = '';
+    const frag = document.createDocumentFragment();
     for (let i = 0; i < ABSCHNITTE.length; i++) {
       const s = ABSCHNITTE[i];
       const head = document.createElement('button');
@@ -507,17 +535,25 @@ const Wochenbericht = (() => {
         <span class="grp-stat wb-sec-stat"></span>`;
       head.onclick = () => {
         if (offen.has(s.id)) offen.delete(s.id); else offen.add(s.id);
-        render();
+        render(`.wb-sec[data-sid="${s.id}"]`);
       };
-      cont.appendChild(head);
+      frag.appendChild(head);
       if (!offen.has(s.id)) continue;
       const body = document.createElement('div');
       body.className = 'wb-sec-body';
       for (const p of s.punkte) body.appendChild(await karte(p));
-      cont.appendChild(body);
+      frag.appendChild(body);
     }
+    if (gen !== renderGen) { activeUrls.forEach((u) => URL.revokeObjectURL(u)); activeUrls = alteUrls; return; }
+    cont.replaceChildren(frag);
+    alteUrls.forEach((u) => URL.revokeObjectURL(u));
+    cont.querySelectorAll('textarea.wb-auto').forEach(autoHoehe);
     renderArchiv();
     aktualisiere();
+    if (altTop != null) {
+      const neu = document.querySelector(sel0);
+      if (neu) window.scrollBy(0, neu.getBoundingClientRect().top - altTop);
+    }
   }
 
   function renderArchiv() {
@@ -599,7 +635,7 @@ const Wochenbericht = (() => {
       if (!ok) return;
     }
     a.text = text; a.nichts = false;
-    await saveNow(); await render();
+    await saveNow(); await render('.wb-item[data-pid="a1"]');
     App.toast(`${tage.length} Bautagebuch-Tag(e) übernommen`);
   }
 
