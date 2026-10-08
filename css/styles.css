@@ -477,6 +477,7 @@ fieldset.techs legend { font-weight: 700; padding: 0 6px; }
 }
 .wb-sec.open { border-radius: 12px 12px 0 0; margin-bottom: 0; }
 .wb-sec.done { background: #e7f5ec; border-color: #b7dfc5; color: var(--ok); }
+.wb-sec.missing { border-color: var(--warn); box-shadow: 0 0 0 2px rgba(192,57,43,.18); color: var(--warn); }
 .wb-sec .chev { flex: 0 0 auto; font-size: 12px; color: var(--muted); width: 14px; }
 .wb-sec-name { flex: 1; min-width: 0; word-break: break-word; }
 .wb-sec.done .wb-sec-stat { background: #e7f5ec; color: var(--ok); }

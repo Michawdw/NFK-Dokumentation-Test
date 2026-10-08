@@ -771,9 +771,9 @@ const App = (() => {
   }
 
   // Aufklapp-Zustand des Baums (bleibt über Re-Renders erhalten; Default: alles zu).
+  // Je Ebene ist höchstens ein Ordner offen (siehe Klick-Handler in renderTree).
   const expandedObers = new Set();
   const expandedUnters = new Set();
-  function toggleSet(set, key) { if (set.has(key)) set.delete(key); else set.add(key); }
 
   // „nicht benötigt"-Markierungen des aktuellen Auftrags. level ∈ {'obers','unters','nodes'}.
   function skipSet(level) {
@@ -907,13 +907,30 @@ const App = (() => {
   // <img>-Elemente schreibt: schwarze Vorschaubilder und doppelt einsortierte Zeilen.
   // Deshalb bekommt jeder Lauf eine Generation; überholte Läufe brechen am nächsten
   // Prüfpunkt ab, ohne den Baum weiter anzufassen.
+  //
+  // Neuaufbau ohne Springen: Der Baum entsteht außerhalb der Seite und ersetzt den alten in
+  // einem Schritt. Vorher wurde er geleert und Zeile für Zeile (mit Wartezeit auf die
+  // Fotos) neu befüllt – dazwischen war die Seite kurz, und der Browser schob die Ansicht
+  // nach oben. Die Vorschaubilder des alten Baums werden erst nach dem Tausch freigegeben.
+  // anker = { ober } | { unter }: diese Kopfzeile bleibt auf derselben Bildschirmhöhe, auch
+  // wenn darüber ein langer Ordner zuklappt.
   let treeGen = 0;
-  async function renderTree() {
+  function treeKopf(anker) {
+    if (!anker) return null;
+    if (anker.unter != null) return $$('#structureTree .tree-unter').find((e) => e.dataset.unter === anker.unter) || null;
+    return $$('#structureTree .tree-ober').find((e) => e.dataset.ober === anker.ober) || null;
+  }
+  async function renderTree(anker) {
     const gen = ++treeGen;
-    const veraltet = () => gen !== treeGen;
     const info = $('#templateInfo');
     const tree = $('#structureTree');
-    revokeThumbs();
+    const urls = [];                       // Vorschaubilder dieses Laufs
+    const veraltet = () => {
+      if (gen === treeGen) return false;
+      urls.forEach((u) => URL.revokeObjectURL(u));
+      urls.length = 0;
+      return true;
+    };
 
     const nodes = await Structure.getMerged();
     if (veraltet()) return;
@@ -922,13 +939,13 @@ const App = (() => {
       ? `${nodes.length} Positionen (${tplCount} aus Vorlage, ${nodes.length - tplCount} eigene).`
       : 'Vorlage wird geladen … (oben auswählen oder eigene Excel importieren).';
 
-    if (nodes.length === 0) { tree.innerHTML = ''; return; }
+    if (nodes.length === 0) { tree.innerHTML = ''; revokeThumbs(); return; }
 
     const enriched = await Overview.enrich(nodes);
     if (veraltet()) return;
     const grp = Structure.groupForDisplay(enriched);
 
-    tree.innerHTML = '';
+    const frag = document.createDocumentFragment();
     for (const [ober, unterMap] of grp) {
       const allNodes = [];
       for (const list of unterMap.values()) for (const n of list) allNodes.push(n);
@@ -954,20 +971,28 @@ const App = (() => {
           : `<span class="grp-stat${oberAllDone ? ' done' : ''}">${oberDone}/${needed.length}</span>`}
         <button class="skip-btn" title="${oberSkip ? 'wieder benötigt' : 'als nicht benötigt markieren'}">${oberSkip ? '↩' : '∅'}</button>
         ${oberOrigin ? '<button class="del-btn" title="Bereich mit allen Positionen löschen">🗑</button>' : ''}`;
-      head.onclick = () => { toggleSet(expandedObers, ober); renderTree(); };
+      head.dataset.ober = ober;
+      // Immer nur ein Oberordner offen; beim Wechsel sind dessen Unterordner wieder zu.
+      head.onclick = () => {
+        const warOffen = expandedObers.has(ober);
+        expandedObers.clear();
+        expandedUnters.clear();
+        if (!warOffen) expandedObers.add(ober);
+        renderTree({ ober });
+      };
       head.querySelector('.skip-btn').onclick = (e) => { e.stopPropagation(); toggleSkip('obers', ober); };
       const oberDel = head.querySelector('.del-btn');
       if (oberDel) oberDel.onclick = (e) => {
         e.stopPropagation();           // sonst klappt nur der Ordner auf/zu
         deleteCustomFolderFlow(allNodes, ober, 'obers', ober);
       };
-      tree.appendChild(head);
+      frag.appendChild(head);
 
       if (!oberExpanded) continue; // Inhalt zugeklappter Ordner wird nicht gebaut
 
       const body = document.createElement('div');
       body.className = 'tree-body';
-      tree.appendChild(body);
+      frag.appendChild(body);
 
       for (const [uk, list] of unterMap) {
         if (uk) {
@@ -993,7 +1018,14 @@ const App = (() => {
               : `<span class="grp-stat${uAllDone ? ' done' : ''}">${uDone}/${uNeeded.length}</span>`}
             <button class="skip-btn" title="${uSkip ? 'wieder benötigt' : 'als nicht benötigt markieren'}">${uSkip ? '↩' : '∅'}</button>
             ${uOrigin ? '<button class="del-btn" title="Unterordner mit allen Positionen löschen">🗑</button>' : ''}`;
-          uHead.onclick = () => { toggleSet(expandedUnters, uKey); renderTree(); };
+          uHead.dataset.unter = uKey;
+          // Immer nur ein Unterordner offen.
+          uHead.onclick = () => {
+            const warOffen = expandedUnters.has(uKey);
+            expandedUnters.clear();
+            if (!warOffen) expandedUnters.add(uKey);
+            renderTree({ unter: uKey });
+          };
           uHead.querySelector('.skip-btn').onclick = (e) => { e.stopPropagation(); toggleSkip('unters', uKey); };
           const uDel = uHead.querySelector('.del-btn');
           if (uDel) uDel.onclick = (e) => {
@@ -1006,17 +1038,27 @@ const App = (() => {
             const uBody = document.createElement('div');
             uBody.className = 'tree-body';
             body.appendChild(uBody);
-            for (const n of list) { const zeile = await nameRow(n); if (veraltet()) return; uBody.appendChild(zeile); }
+            for (const n of list) { const zeile = await nameRow(n, urls); if (veraltet()) return; uBody.appendChild(zeile); }
           }
         } else {
           // Positionen direkt im Oberordner (ohne Unterordner)
-          for (const n of list) { const zeile = await nameRow(n); if (veraltet()) return; body.appendChild(zeile); }
+          for (const n of list) { const zeile = await nameRow(n, urls); if (veraltet()) return; body.appendChild(zeile); }
         }
       }
     }
+    if (veraltet()) return;
+    const altKopf = treeKopf(anker);
+    const altTop = altKopf ? altKopf.getBoundingClientRect().top : null;
+    tree.replaceChildren(frag);
+    revokeThumbs();                        // Bilder des alten Baums jetzt freigeben
+    activeUrls = urls;
+    if (altTop != null) {
+      const neuKopf = treeKopf(anker);
+      if (neuKopf) window.scrollBy(0, neuKopf.getBoundingClientRect().top - altTop);
+    }
   }
 
-  async function nameRow(n) {
+  async function nameRow(n, urls) {
     const origin = originOf(n);
     const row = document.createElement('div');
     row.className = 'name-row' + (n.done ? ' done' : '') + (n.skipped ? ' skipped' : '')
@@ -1059,7 +1101,7 @@ const App = (() => {
     const photos = await DB.getPhotos(currentJob.id, n.key);
     for (const p of photos) {
       const url = URL.createObjectURL(p.blob);
-      activeUrls.push(url);
+      (urls || activeUrls).push(url);
       const wrap = document.createElement('div');
       wrap.className = 'thumb-wrap';
       wrap.innerHTML = `<img src="${url}" alt="" loading="lazy" /><span class="thumb-seq">${String(p.seq).padStart(2, '0')}</span>`;
@@ -1501,7 +1543,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v51'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v53'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;

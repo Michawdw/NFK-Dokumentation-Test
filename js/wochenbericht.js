@@ -123,6 +123,7 @@ const Wochenbericht = (() => {
           fotos: { min: 1, label: 'Foto des Lagerorts (Pflicht, mindestens 1)' } },
         { v: 'nein', label: 'Nein', ampel: 'gruen' },
       ] },
+      { id: 'm3', typ: 'frei', titel: 'Fehlendes / benötigtes Material (bis zur Fertigstellung)', nichts: '– nichts –' },
     ] },
     { id: 's7', titel: 'Tickets', punkte: [
       { id: 't1', typ: 'wahl', titel: 'Alle zugewiesenen Tickets an- und abgemeldet', optionen: [
@@ -473,6 +474,7 @@ const Wochenbericht = (() => {
       if (!head) continue;
       const ok = st.fertig >= st.gesamt;
       head.classList.toggle('done', ok);
+      head.classList.toggle('missing', pruefModus && !ok);
       head.querySelector('.wb-sec-stat').textContent = st.fertig + '/' + st.gesamt;
       head.querySelector('.wb-sec-check').hidden = !ok;
     }
@@ -534,7 +536,8 @@ const Wochenbericht = (() => {
         <span class="grp-check wb-sec-check" hidden>✓</span>
         <span class="grp-stat wb-sec-stat"></span>`;
       head.onclick = () => {
-        if (offen.has(s.id)) offen.delete(s.id); else offen.add(s.id);
+        // Immer nur ein Abschnitt offen: Öffnen schließt den bisherigen.
+        offen = offen.has(s.id) ? new Set() : new Set([s.id]);
         render(`.wb-sec[data-sid="${s.id}"]`);
       };
       frag.appendChild(head);
@@ -642,7 +645,10 @@ const Wochenbericht = (() => {
   // ----------------------------------------------------------- Pflicht prüfen
   async function markiereOffene() {
     const fehlend = PFLICHT_PUNKTE.filter((p) => !punktFertig(p));
-    for (const s of ABSCHNITTE) if (s.punkte.some((p) => fehlend.includes(p))) offen.add(s.id);
+    // Nur den ersten Abschnitt mit offenen Punkten aufklappen (immer nur einer offen);
+    // die übrigen betroffenen zeigen ihren roten Zustand an der Kopfzeile.
+    const erster = ABSCHNITTE.find((s) => s.punkte.some((p) => fehlend.includes(p)));
+    offen = new Set(erster ? [erster.id] : []);
     pruefModus = true;
     await render();                        // setzt über aktualisiere() die roten Markierungen
     const kopf = $('#wbKopf');
@@ -754,39 +760,69 @@ const Wochenbericht = (() => {
     doc.push(Docx.pStyled('✓ erledigt / in Ordnung   ◐ teilweise / in Arbeit   ! kritisch – bitte beachten   – neutral',
       { sz: 16, color: '5A6672' }));
 
-    // Abschnitte im Detail
+    // Abschnitte im Detail. Seitenumbruch-Regel (Michael): Passt ein Abschnitt nicht mehr
+    // vollständig auf die angefangene Seite, beginnt er komplett auf einer neuen. Nur ein
+    // Abschnitt, der allein schon länger als eine Seite ist, darf umbrechen – dann bleibt
+    // wenigstens jeder einzelne Punkt (Frage, Antwort, Fotos) beisammen. Word kennt dafür
+    // „Absatz mit nächstem zusammenhalten"; die Länge schätzen wir beim Aufbau mit.
+    // Werte in cm, an einem echten Bericht in Word nachgemessen: einzeiliger Absatz samt
+    // Abstand 0,6 · jede weitere Zeile 0,47 · Fotozeile (Bild 6 cm + Unterschrift) 7,5 ·
+    // Balken 0,85. Nutzbare Seitenhöhe A4 mit 2-cm-Rändern: 25,7. Die Grenze liegt bewusst
+    // etwas darüber: Ist ein zusammengehaltener Abschnitt doch zu lang, setzt Word ihn auf
+    // eine neue Seite und bricht dann normal um (geprüft) – harmlos. Umgekehrt (zu knapp
+    // geschätzt) würde ein passender Abschnitt zerrissen, genau das soll nicht passieren.
+    const SEITE_CM = 26;
+    const zeilen = (t) => String(t || '').split(/\r?\n/)
+      .reduce((n, z) => n + Math.max(1, Math.ceil(z.length / 95)), 0);
+    const textCm = (t) => 0.47 * zeilen(t) + 0.13;
+    const fotoCm = (n) => (n ? Math.ceil(n / 2) * 7.0 + 0.5 : 0);
     for (let i = 0; i < ABSCHNITTE.length; i++) {
       const s = ABSCHNITTE[i];
+      const abschnittStart = doc.mark();
+      let hoehe = 0.85;
+      const punkte = [];                   // [von, bis] je Punkt
       doc.push(Docx.pBar(`${i + 1}. ${s.titel}`, BLAU));
       for (const p of s.punkte) {
         const a = current.antworten[p.id] || {};
+        const von = doc.mark();
         doc.push(Docx.pStyled(p.titel, { bold: true, color: BLAU, after: 40, keepNext: true }));
+        hoehe += textCm(p.titel);
+        const text = (t, stil) => { doc.push(Docx.pStyled(t, stil)); hoehe += textCm(t); };
+        const fotos = async (items) => { await doc.photoGrid(items); hoehe += fotoCm(items.length); };
         if (p.typ === 'wahl') {
           const at = antwortText(p);
           const am = AMPEL[at.ampel] || AMPEL.grau;
-          doc.push(Docx.pStyled(at.text, { bold: true, color: am.color, after: 60 }));
+          text(at.text, { bold: true, color: am.color, after: 60 });
           const opt = p.optionen.find((x) => x.v === a.status);
-          if (opt && opt.text && voll(a.text)) doc.push(Docx.pStyled(labelKurz(opt.text.label) + ': ' + a.text, { after: 60 }));
+          if (opt && opt.text && voll(a.text)) text(labelKurz(opt.text.label) + ': ' + a.text, { after: 60 });
           if (opt && opt.unter) {
             const uo = opt.unter.optionen.find((x) => x.v === (a.unter || {}).status);
-            if (uo && uo.text && voll(a.unter.text)) doc.push(Docx.pStyled(labelKurz(uo.text.label) + ': ' + a.unter.text, { after: 60 }));
+            if (uo && uo.text && voll(a.unter.text)) text(labelKurz(uo.text.label) + ': ' + a.unter.text, { after: 60 });
           }
-          if (voll(a.notiz)) doc.push(Docx.pStyled('Notiz: ' + a.notiz, { italic: true, color: '5A6672', after: 60 }));
-          if (opt && opt.fotos) await doc.photoGrid(await fotoItems(p.id));
+          if (voll(a.notiz)) text('Notiz: ' + a.notiz, { italic: true, color: '5A6672', after: 60 });
+          if (opt && opt.fotos) await fotos(await fotoItems(p.id));
         } else if (p.typ === 'frei') {
-          doc.push(a.nichts ? Docx.pStyled(p.nichts, { color: '5A6672', after: 60 }) : Docx.pStyled(a.text, { after: 60 }));
-          if (p.fotosFrei) await doc.photoGrid(await fotoItems(p.id));
+          if (a.nichts) text(p.nichts, { color: '5A6672', after: 60 });
+          else text(a.text, { after: 60 });
+          if (p.fotosFrei) await fotos(await fotoItems(p.id));
         } else if (p.typ === 'fotos') {
           let irgendwas = false;
           for (const g of p.gruppen) {
             const items = await fotoItems(p.id + '-' + g.id);
             if (!items.length) continue;
             irgendwas = true;
-            doc.push(Docx.pStyled(g.label, { bold: true, sz: 20, after: 40, keepNext: true }));
-            await doc.photoGrid(items);
+            text(g.label, { bold: true, sz: 20, after: 40, keepNext: true });
+            await fotos(items);
           }
-          if (!irgendwas) doc.push(Docx.pStyled('keine Fortschrittsbilder', { color: '5A6672', after: 60 }));
+          if (!irgendwas) text('keine Fortschrittsbilder', { color: '5A6672', after: 60 });
         }
+        punkte.push([von, doc.mark()]);
+      }
+      if (hoehe <= SEITE_CM) doc.keepTogether(abschnittStart);
+      else {
+        // Balken an den ersten Punkt binden, dann jeden Punkt für sich zusammenhalten.
+        doc.keepTogether(abschnittStart, punkte[0][1]);
+        for (const [von, bis] of punkte.slice(1)) doc.keepTogether(von, bis);
       }
     }
     return { blob: await doc.toBlob(), o };

@@ -140,6 +140,21 @@ const Docx = (() => {
     '<w:spacing w:before="280" w:after="120"/></w:pPr>' +
     `<w:r><w:rPr><w:b/><w:color w:val="FFFFFF"/><w:sz w:val="26"/></w:rPr>${runText(' ' + str)}</w:r></w:p>`;
 
+  // Setzt <w:keepNext/> in jeden Absatz eines XML-Stücks (ohneLetzten: den letzten Absatz
+  // auslassen). Vorhandene keepNext werden vorher entfernt, damit keiner doppelt steht.
+  // Einfügen direkt am Anfang von w:pPr ist schema-konform (keepNext folgt nur pStyle).
+  function keepNextXml(xml, ohneLetzten) {
+    const sauber = String(xml).replace(/<w:keepNext\/>/g, '');
+    const gesamt = (sauber.match(/<w:p\/>|<w:p>/g) || []).length;
+    let n = 0;
+    return sauber.replace(/<w:p\/>|<w:p>(<w:pPr>)?/g, (m, ppr) => {
+      n++;
+      if (ohneLetzten && n === gesamt) return m;
+      if (m === '<w:p/>') return '<w:p><w:pPr><w:keepNext/></w:pPr></w:p>';
+      return ppr ? '<w:p><w:pPr><w:keepNext/>' : '<w:p><w:pPr><w:keepNext/></w:pPr>';
+    });
+  }
+
   // Tabelle mit dünnem grauen Gitter. rows: [{ header?, cells: [{ text | xml, fill, bold,
   // color, sz, align }] }], widths: Spaltenbreiten in Twips (Summe = Textbreite 9638).
   // Kopfzeilen wiederholen sich auf jeder Seite (tblHeader).
@@ -325,6 +340,18 @@ const Docx = (() => {
         const left = (addressXml || []).filter(Boolean).join('');
         const right = await api.logoXml(opts);
         body.push(twoColumnRow(left, right));
+        return api;
+      },
+
+      // Zusammenhalten auf einer Seite: mark() merkt sich die aktuelle Position im Dokument,
+      // keepTogether(von, bis) setzt auf allen Absätzen dazwischen „Absatz mit nächstem
+      // zusammenhalten" (auch in Tabellenzellen – so hält Word auch Tabellenzeilen
+      // zusammen). Der letzte Absatz bleibt frei, sonst hinge der Block am nächsten.
+      // Passt der Block nicht mehr auf die Seite, beginnt Word ihn auf einer neuen.
+      mark() { return body.length; },
+      keepTogether(von, bis) {
+        const ende = bis == null ? body.length : bis;
+        for (let i = von; i < ende; i++) body[i] = keepNextXml(body[i], i === ende - 1);
         return api;
       },
 
