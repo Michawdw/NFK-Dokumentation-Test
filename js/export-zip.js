@@ -91,6 +91,9 @@ const ExportZip = (() => {
     // eigene Namen an, was hier eine Phantom-Position „Baubehinderung" erzeugen würde.
     const behinderungPhotos = await addBehinderungPhotos(zip, job, filPrefix, manifest, allePhotos);
     totalPhotos += behinderungPhotos;
+    // Fotos der Wochenberichte: wie die Behinderungsfotos eigener Ordner und eigener
+    // Manifest-Abschnitt, keine Bilddoku-Position und keine Zeile in uebersicht.csv.
+    totalPhotos += addWochenberichtPhotos(zip, job, filPrefix, manifest, allePhotos);
 
     zip.file('uebersicht.csv', '﻿' + lines.join('\r\n'));
     zip.file('manifest.json', JSON.stringify(manifest, null, 2));
@@ -169,6 +172,45 @@ const ExportZip = (() => {
   //   <Filialnr>_Baubehinderung_<NN>.jpg
   // Mehrere Anzeigen am selben Tag bekommen „(2)", „(3)" … angehängt, damit sich die
   // Pfade nicht überschreiben. Liefert die Anzahl der abgelegten Bilder.
+  // Wochenbericht-Fotos: Wochenbericht/KW41_2026/<Punkt>/<Filiale>_Wochenbericht_<Punkt>_01.jpg
+  function addWochenberichtPhotos(zip, job, filPrefix, manifest, allePhotos) {
+    const NS = '__wochenbericht__';
+    const berichte = new Map(((job && job.wochenberichte) || []).map((b) => [b.id, b]));
+    const titel = new Map();
+    for (const s of Wochenbericht.ABSCHNITTE) {
+      for (const p of s.punkte) {
+        titel.set(p.id, p.titel);
+        for (const g of (p.gruppen || [])) titel.set(p.id + '-' + g.id, 'Fortschritt ' + g.label);
+      }
+    }
+    const fotos = allePhotos
+      .filter((p) => typeof p.nodeKey === 'string' && p.nodeKey.indexOf(NS) === 0)
+      .sort((a, b) => (a.nodeKey < b.nodeKey ? -1 : a.nodeKey > b.nodeKey ? 1 : (a.seq || 0) - (b.seq || 0)));
+    if (!fotos.length) return 0;
+    manifest.wochenbericht = [];
+    const nr = new Map();
+    for (const p of fotos) {
+      const rest = p.nodeKey.slice(NS.length);
+      const trenn = rest.indexOf('__');
+      const id = trenn >= 0 ? rest.slice(0, trenn) : rest;
+      const pid = trenn >= 0 ? rest.slice(trenn + 2) : '';
+      const b = berichte.get(id);
+      const m = b && String(b.kw).match(/^(\d{4})-W(\d{2})$/);
+      const kw = m ? `KW${m[2]}_${m[1]}` : 'ohne Zuordnung';
+      const punkt = safePart(titel.get(pid) || pid || 'Foto');
+      const ordner = `Wochenbericht/${kw}/${punkt}`;
+      const n = (nr.get(ordner) || 0) + 1;
+      nr.set(ordner, n);
+      const path = `${ordner}/${filPrefix}Wochenbericht_${String(n).padStart(2, '0')}.jpg`;
+      zip.file(path, p.blob);
+      manifest.wochenbericht.push({
+        srcId: p.srcId || null, berichtId: id, kw: b ? b.kw : null, punkt: pid,
+        caption: p.caption || '', createdAt: p.createdAt || null, path,
+      });
+    }
+    return fotos.length;
+  }
+
   async function addBehinderungPhotos(zip, job, filPrefix, manifest, allePhotos) {
     const NS = '__behinderung__';
     const all = allePhotos;

@@ -451,6 +451,66 @@ fieldset.techs legend { font-weight: 700; padding: 0 6px; }
 .vp-status.ok { background: #e7f5ec; border-color: #bfe3cd; }
 .vp-status.ok span { color: var(--ok); }
 
+/* ---------- Wochenbericht ---------- */
+/* Karten wie in der Vorprüfung; vollständig = hellgrün mit ✓ wie .name-row.done. */
+.wb-kopf {
+  display: grid; gap: 10px; background: var(--card); border: 1px solid var(--line);
+  border-radius: 12px; padding: 12px 14px; margin-bottom: 10px;
+}
+.wb-kopf label { font-weight: 600; font-size: 14px; }
+.wb-kopf select, .wb-kopf input {
+  display: block; width: 100%; margin-top: 6px; min-height: 44px; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 10px; font-size: 16px; background: #fff; font-family: inherit;
+}
+.wb-kopf.done { background: #e7f5ec; border-color: #b7dfc5; }
+.wb-kopf.missing { border-color: var(--warn); box-shadow: 0 0 0 2px rgba(192,57,43,.18); }
+.wb-stand {
+  font-weight: 700; color: var(--warn); background: #fdecea; border: 1px solid #f3c4be;
+  border-radius: 10px; padding: 8px 12px; margin-bottom: 12px; text-align: center;
+}
+.wb-stand.done { color: var(--ok); background: #e7f5ec; border-color: #bfe3cd; }
+.wb-sec {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  min-height: 52px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 12px; background: #f3f5f8;
+  font-size: 16px; font-weight: 700; color: var(--brand); font-family: inherit;
+}
+.wb-sec.open { border-radius: 12px 12px 0 0; margin-bottom: 0; }
+.wb-sec.done { background: #e7f5ec; border-color: #b7dfc5; color: var(--ok); }
+.wb-sec .chev { flex: 0 0 auto; font-size: 12px; color: var(--muted); width: 14px; }
+.wb-sec-name { flex: 1; min-width: 0; word-break: break-word; }
+.wb-sec.done .wb-sec-stat { background: #e7f5ec; color: var(--ok); }
+.wb-sec-body {
+  border: 1px solid var(--line); border-top: none; border-radius: 0 0 12px 12px;
+  padding: 10px 8px 2px; margin-bottom: 8px;
+}
+.wb-item {
+  background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 10px;
+}
+.wb-item.done { background: #e7f5ec; border-color: #b7dfc5; }
+.wb-item.missing { border-color: var(--warn); box-shadow: 0 0 0 2px rgba(192,57,43,.18); background: #fff; }
+.wb-item.neutral { background: #f8f9fb; }
+.wb-q { font-weight: 700; margin-bottom: 10px; word-break: break-word; }
+.wb-check { display: none; color: var(--ok); font-weight: 900; margin-right: 6px; }
+.wb-item.done .wb-check { display: inline; }
+.wb-seg.viele { flex-wrap: wrap; }
+.wb-seg.viele .vp-opt { flex: 1 1 calc(50% - 8px); font-size: 15px; padding: 6px 8px; }
+.vp-seg .vp-opt.active.mid { background: #d98c00; border-color: #d98c00; color: #fff; }
+.wb-detail { margin-top: 12px; }
+.wb-unter { margin-top: 12px; padding: 10px 12px; border-left: 3px solid var(--brand-light); background: rgba(31,78,120,.04); border-radius: 0 10px 10px 0; }
+.wb-uq { font-weight: 600; font-size: 14px; margin-bottom: 8px; }
+.wb-fotos { margin-top: 12px; }
+.wb-fotolabel { font-weight: 600; font-size: 14px; }
+.wb-fotolabel.fehlt { color: var(--warn); }
+.wb-fotohint { margin: 0 0 4px; }
+.wb-freibtns { margin: 8px 0 0; }
+.wb-nichts.active { background: var(--ok); border-color: var(--ok); color: #fff; }
+.wb-notizbtn {
+  margin-top: 10px; background: none; border: none; padding: 4px 0; color: var(--brand-light);
+  font-weight: 700; font-size: 14px; cursor: pointer;
+}
+.wb-notiz { margin-top: 10px; }
+
 /* ---------- Baubehinderungsanzeige ---------- */
 /* Adressblock als abgesetzte Gruppe, damit Absender/Empfänger nicht mit den
    übrigen Formularfeldern verschwimmen. */

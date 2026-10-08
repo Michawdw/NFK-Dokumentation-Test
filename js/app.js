@@ -19,6 +19,7 @@ const App = (() => {
     'view-bilddoku': 'Bilddokumentation',
     'view-bautagebuch': 'Bautagebuch',
     'view-behinderung': 'Baubehinderungsanzeige',
+    'view-wochenbericht': 'Wochenbericht',
   };
 
   let aktiveView = 'view-start';
@@ -26,6 +27,7 @@ const App = (() => {
     // Offene Eingaben beim Verlassen sichern (Zurück-Pfeil, Android-Zurück, Funktionswechsel).
     if (aktiveView === 'view-bautagebuch' && viewId !== 'view-bautagebuch') flushDiary();
     if (aktiveView === 'view-vorpruefung' && viewId !== 'view-vorpruefung') Vorpruefung.flush();
+    if (aktiveView === 'view-wochenbericht' && viewId !== 'view-wochenbericht') Wochenbericht.flush();
     // Zurück auf die Startseite: „Weitere Aufträge" wieder zuklappen.
     if (viewId === 'view-start' && aktiveView !== 'view-start' && weitereOffen) {
       weitereOffen = false;
@@ -41,6 +43,7 @@ const App = (() => {
     if (viewId === 'view-bilddoku') enterBilddoku();
     if (viewId === 'view-bautagebuch') initDiaryView();
     if (viewId === 'view-behinderung') Behinderung.enter();
+    if (viewId === 'view-wochenbericht') Wochenbericht.enter();
   }
 
   // Zugang zu Bilddoku/Bautagebuch erst, wenn die Vorprüfung des Auftrags vollständig
@@ -325,6 +328,7 @@ const App = (() => {
     if (!job) return;
     await flushDiary();            // offene Eingaben gehören noch zum ALTEN Auftrag
     await Vorpruefung.flush();
+    await Wochenbericht.flush();
     currentJob = job;
     await DB.setCurrentJobId(id);
     resetJobState();
@@ -451,6 +455,7 @@ const App = (() => {
   async function neuenAuftragAnlegen() {
     await flushDiary();            // offene Eingaben gehören noch zum bisherigen Auftrag
     await Vorpruefung.flush();
+    await Wochenbericht.flush();
     const job = await DB.createJob('Auftrag ' + ((await DB.listJobs()).length + 1));
     currentJob = job;
     await DB.setCurrentJobId(job.id);
@@ -1446,7 +1451,7 @@ const App = (() => {
       _switchView(ziel);
     });
     // Android friert die App beim Wegwischen ein oder beendet sie – vorher noch sichern.
-    const alleSichern = () => { flushDiary(); Vorpruefung.flush(); };
+    const alleSichern = () => { flushDiary(); Vorpruefung.flush(); Wochenbericht.flush(); };
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) { alleSichern(); return; }
       // Die App wird zurückgeholt: Liegt das Bautagebuch noch offen und ist inzwischen ein
@@ -1496,7 +1501,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v49'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v50'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
@@ -1537,6 +1542,7 @@ const App = (() => {
       bindEvents();
       Vorpruefung.init();
       Behinderung.init();
+      Wochenbericht.init();
       updateNetDot();
       initAppVersion();
       window.addEventListener('online', updateNetDot);
@@ -1590,6 +1596,7 @@ const App = (() => {
     currentNode = null;
     expandedObers.clear();
     expandedUnters.clear();
+    Wochenbericht.reset(); // geöffneten Wochenbericht nicht in den neuen Auftrag tragen
     weitereOffen = false;  // Klappfeld „Weitere Aufträge" nach dem Wechsel wieder zu
   }
 
@@ -1724,6 +1731,7 @@ const App = (() => {
       // Offene Eingaben gehören noch zum bisherigen Auftrag – der Import kann gleich wechseln.
       await flushDiary();
       await Vorpruefung.flush();
+      await Wochenbericht.flush();
       const r = await Merge.importContributionZip(zip, { dateiname, pruefen: pruefeHerkunft });
       if (r.abgebrochen) { toast('Import abgebrochen – nichts verändert.'); return; }
       if ((r.jobNeu || r.gewechselt) && aktiveView === 'view-bilddoku') await enterBilddoku();
@@ -1786,6 +1794,7 @@ const App = (() => {
       // Offene Eingaben gehören noch zum bisherigen Auftrag – der Import wechselt gleich.
       await flushDiary();
       await Vorpruefung.flush();
+      await Wochenbericht.flush();
       const r = await Handover.importXlsx(file, { pruefen: pruefeHerkunft });
       if (!r) { toast('Import abgebrochen – nichts verändert.'); return; }
       const job = r.job;

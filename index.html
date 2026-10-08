@@ -74,6 +74,11 @@
           <span class="bigbtn-title">Baubehinderungsanzeige</span>
           <span class="bigbtn-sub">Word-Anzeige nach VOB/B mit Fotos</span>
         </button>
+        <button class="bigbtn" data-go="view-wochenbericht">
+          <span class="bigbtn-emoji">📅</span>
+          <span class="bigbtn-title">Wochenbericht</span>
+          <span class="bigbtn-sub">Baufortschritt der Woche für den Innendienst</span>
+        </button>
       </div>
 
       <div id="appVersion" class="app-version" title="Installierte App-Version dieses Geräts"></div>
@@ -163,6 +168,29 @@
         </div>
         <span id="diarySaved" class="saved" hidden>✓ gespeichert</span>
       </form>
+    </section>
+
+    <!-- ===================== WOCHENBERICHT ===================== -->
+    <section id="view-wochenbericht" class="view">
+      <h3 class="arch-head">Gespeicherte Wochenberichte</h3>
+      <div id="wbArchiv" class="diary-archive"></div>
+
+      <div id="wbKopf" class="wb-kopf">
+        <label>Kalenderwoche
+          <select id="wbKw"></select>
+        </label>
+        <label>Gesprächspartner vor Ort <span class="req">*</span>
+          <input id="wbGespraech" placeholder="Name" autocomplete="off" />
+        </label>
+      </div>
+      <div id="wbStand" class="wb-stand"></div>
+
+      <div id="wbAbschnitte" class="wb-abschnitte"></div>
+
+      <div class="toolrow vp-footer">
+        <button type="button" id="wbExportBtn" class="btn primary wide">📄 Wochenbericht erstellen (Word)</button>
+      </div>
+      <p class="hint">Der Word-Bericht lässt sich erstellen, sobald alle Punkte beantwortet sind. Der Bericht bleibt danach weiter bearbeitbar.</p>
     </section>
 
     <!-- ===================== BAUBEHINDERUNGSANZEIGE ===================== -->
@@ -306,6 +334,7 @@
   <script src="js/protokoll.js"></script>
   <script src="js/behinderung.js"></script>
   <script src="js/vorpruefung.js"></script>
+  <script src="js/wochenbericht.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
