@@ -116,6 +116,8 @@ const Wochenbericht = (() => {
           unter: { titel: 'An FlexPos gemeldet', optionen: [
             { v: 'ja', label: 'Ja', ampel: 'gelb' }, { v: 'nein', label: 'Nein', ampel: 'rot' },
           ] } },
+        // Ohne Lieferung gibt es nichts zu prüfen – keine weiteren Angaben nötig.
+        { v: 'nichtangeliefert', label: 'wurde noch nicht angeliefert', ampel: 'grau' },
       ] },
       { id: 'm2', typ: 'wahl', titel: 'Material in Filiale hinterlassen', optionen: [
         { v: 'ja', label: 'Ja', ampel: 'gelb',
