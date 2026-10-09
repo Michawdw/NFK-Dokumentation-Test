@@ -131,7 +131,11 @@ fieldset.techs legend { font-weight: 700; padding: 0 6px; }
 .tpl-row { align-items: center; flex-wrap: nowrap; }
 .tpl-label { font-weight: 700; font-size: 14px; color: var(--muted); flex: 0 0 auto; }
 .tpl-select {
-  flex: 1 1 auto;
+  /* min-width/flex-basis 0: sonst ist das Feld so breit wie der längste Vorlagenname
+     und schiebt die Seite auf dem Handy seitlich über den Rand hinaus. */
+  flex: 1 1 0;
+  min-width: 0;
+  text-overflow: ellipsis;
   min-height: var(--tap);
   padding: 0 12px;
   font-size: 16px;
