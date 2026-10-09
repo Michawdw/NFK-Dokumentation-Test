@@ -78,7 +78,11 @@ h3 { font-size: 16px; margin: 16px 0 8px; }
   font-weight: 400;
 }
 .form textarea { resize: vertical; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+/* minmax(0,1fr) + min-width 0: Datumsfelder haben eine feste Mindestbreite und schoben
+   die Seite auf schmalen Handys sonst seitlich über den Rand. */
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.grid2 input { min-width: 0; }
+.grid2 label { overflow-wrap: break-word; }   /* lange Wörter in schmaler Spalte umbrechen */
 fieldset.techs { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 14px 0; }
 fieldset.techs legend { font-weight: 700; padding: 0 6px; }
 .tech-item { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
@@ -339,7 +343,15 @@ fieldset.techs legend { font-weight: 700; padding: 0 6px; }
 .diary-rows { display: grid; gap: 10px; }
 .diary-row { border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: #fff; }
 .diary-row .dr-name { font-weight: 700; margin-bottom: 6px; }
-.dr-times { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+/* minmax(0,1fr): Uhrzeit-Felder haben eine feste Mindestbreite und schoben die Zeile
+   auf schmalen Handys sonst über den Bildschirmrand. */
+.dr-times { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.dr-times input { min-width: 0; padding: 10px 6px; }
+/* Schmale Handys: Uhr-Symbol weg, sonst wird die Uhrzeit abgeschnitten.
+   Antippen des Feldes öffnet die Zeitauswahl trotzdem. */
+@media (max-width: 400px) {
+  .dr-times input::-webkit-calendar-picker-indicator { display: none; }
+}
 .dr-times label { font-size: 12px; font-weight: 600; color: var(--muted); }
 .diary-row textarea { width: 100%; margin-top: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
 
