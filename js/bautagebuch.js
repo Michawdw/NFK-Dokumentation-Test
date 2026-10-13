@@ -87,7 +87,8 @@ const Bautagebuch = (() => {
     for (let i = 0; i < MAX_ROWS; i++) {
       const row = 8 + i;
       const r = (model.rows && model.rows[i]) || {};
-      xml = setCell(xml, 'B' + row, text(r.name), fehlend);
+      // Mehr als 5 Leute vor Ort: 2. Name mit identischen Zeiten in derselben Zeile.
+      xml = setCell(xml, 'B' + row, text([r.name, r.name2].filter(Boolean).join(' + ')), fehlend);
       xml = setCell(xml, 'I' + row, num(timeFraction(r.start)), fehlend);
       xml = setCell(xml, 'K' + row, num(timeFraction(r.ende)), fehlend);
       xml = setCell(xml, 'M' + row, num(timeFraction(r.pause)), fehlend);

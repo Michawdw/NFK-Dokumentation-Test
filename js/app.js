@@ -1284,6 +1284,7 @@ const App = (() => {
     if (!diaryAutoSaveAktiv) {            // Listener nur einmal registrieren
       diaryAutoSaveAktiv = true;
       f.addEventListener('input', scheduleDiarySave);
+      bindDiaryRows();
     }
   }
 
@@ -1373,35 +1374,225 @@ const App = (() => {
     return `${ort} ${d}.${m}.${y}`.trim();
   }
 
+  // ------------------------------------------------ Bautagebuch: Techniker-Blöcke
+  // Die Excel-Vorlage des Auftraggebers hat genau 5 Techniker-Zeilen (darf nicht geändert
+  // werden). Techniker 1 und 2 sind immer eingeblendet, 3–5 kommen per Knopf dazu. Sind mehr
+  // als 5 Leute vor Ort, trägt man je Block einen 2. Namen mit identischen Zeiten ein
+  // (Excel: „Müller + Schmidt"). Dieser Knopf erscheint erst, wenn alle 5 Blöcke belegt
+  // sind – sonst verwechselt man ihn leicht mit „+ Techniker hinzufügen".
+  const MAX_TECH = 5;
+  const MIN_TECH = 2;
+  const TIME_FIELDS = ['.dr-start', '.dr-ende', '.dr-pause'];
+
+  // Uhrzeit aus der Eingabe: „7" → 07:00, „730"/„0730"/„7:30"/„7.30" → 07:30. Bei der Pause
+  // sind 1–2 Ziffern Minuten („30" → 00:30, „90" → 01:30). Liefert '' (leer), 'HH:MM' oder
+  // null (ungültig). Statt <input type="time">: Dort zeigt Android keine Tastatur, und ohne
+  // sichtbares Uhr-Symbol ließ sich bis v55 auf schmalen Handys gar keine Zeit eingeben.
+  function normalizeTime(raw, pause) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    let h, m;
+    const sep = s.match(/^(\d{1,2})\s*[:.,]\s*(\d{2})$/);
+    if (sep) {
+      h = +sep[1]; m = +sep[2];
+    } else if (/^\d{1,4}$/.test(s)) {
+      if (s.length <= 2) {
+        if (pause) { h = Math.floor(+s / 60); m = +s % 60; } else { h = +s; m = 0; }
+      } else {
+        h = +s.slice(0, -2); m = +s.slice(-2);
+      }
+    } else {
+      return null;
+    }
+    if (h > 23 || m > 59) return null;
+    return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+  }
+  const istPause = (inp) => inp.classList.contains('dr-pause');
+  const timeVal = (inp) => normalizeTime(inp.value, istPause(inp)) || '';
+
+  const CLOCK_SVG = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  function timeFieldHtml(cls, label, value) {
+    return `<div class="dr-time">
+        <span class="dr-time-label">${label}</span>
+        <span class="dr-time-box">
+          <input class="${cls}" type="text" inputmode="numeric" autocomplete="off" maxlength="5"
+                 placeholder="hh:mm" aria-label="${label}" value="${escAttr(value || '')}" />
+          <button type="button" class="dr-clock" title="Uhrzeit auswählen" aria-label="${label}: Uhrzeit auswählen">${CLOCK_SVG}</button>
+          <input class="dr-picker" type="time" tabindex="-1" aria-hidden="true" />
+        </span>
+      </div>`;
+  }
+
+  function diaryRowEl(r) {
+    const div = document.createElement('div');
+    div.className = 'diary-row';
+    const name2 = r.name2 || '';
+    div.innerHTML = `
+      <div class="dr-head">
+        <span class="dr-title"></span>
+        <button type="button" class="dr-del" title="Techniker entfernen" aria-label="Techniker entfernen">✕</button>
+      </div>
+      <input class="dr-name" type="text" placeholder="Name" value="${escAttr(r.name || '')}" autocomplete="off" />
+      <input class="dr-name2" type="text" placeholder="2. Techniker (gleiche Zeiten)" value="${escAttr(name2)}" autocomplete="off"${name2 ? '' : ' hidden'} />
+      <button type="button" class="dr-add2" hidden>+ 2. Techniker (gleiche Zeiten)</button>
+      <button type="button" class="btn ghost dr-copy">⏱ Zeiten von Techniker 1 übernehmen</button>
+      <div class="dr-times">
+        ${timeFieldHtml('dr-start', 'Start', r.start)}
+        ${timeFieldHtml('dr-ende', 'Ende', r.ende)}
+        ${timeFieldHtml('dr-pause', 'Pause', r.pause)}
+      </div>
+      <textarea class="dr-bem" rows="1" placeholder="Bemerkung">${escHtml(r.bemerkung || '')}</textarea>`;
+    return div;
+  }
+
   function renderDiaryRows(rows) {
     const cont = $('#diaryRows');
     cont.innerHTML = '';
-    const data = (rows || []).slice(0, 5);
-    while (data.length < 5) data.push({});
-    data.forEach((r, i) => {
-      const div = document.createElement('div');
-      div.className = 'diary-row';
-      div.innerHTML = `
-        <input class="dr-name" type="text" placeholder="Techniker ${i + 1}" value="${escAttr(r.name || '')}" autocomplete="off" />
-        <div class="dr-times">
-          <label>Start<input class="dr-start" type="time" value="${escAttr(r.start || '')}" /></label>
-          <label>Ende<input class="dr-ende" type="time" value="${escAttr(r.ende || '')}" /></label>
-          <label>Pause<input class="dr-pause" type="time" value="${escAttr(r.pause || '')}" /></label>
-        </div>
-        <textarea class="dr-bem" rows="1" placeholder="Bemerkung">${escHtml(r.bemerkung || '')}</textarea>`;
-      cont.appendChild(div);
+    const data = (rows || []).slice(0, MAX_TECH);
+    while (data.length < MIN_TECH) data.push({});
+    data.forEach((r) => cont.appendChild(diaryRowEl(r)));
+    renumberDiaryRows();
+  }
+
+  // Nummern, ✕ (erst ab Techniker 3), Übernehmen-Knopf (ab Techniker 2) und
+  // „+ Techniker hinzufügen" (bis 5) nach jedem Hinzufügen/Entfernen neu setzen.
+  function renumberDiaryRows() {
+    const rows = $$('#diaryRows .diary-row');
+    rows.forEach((d, i) => {
+      d.querySelector('.dr-title').textContent = 'Techniker ' + (i + 1);
+      d.querySelector('.dr-del').hidden = i < MIN_TECH;
+      d.querySelector('.dr-copy').hidden = i === 0;
     });
+    const add = $('#diaryAddRow');
+    if (add) add.hidden = rows.length >= MAX_TECH;
+    updateZweitname();
+  }
+
+  // „+ 2. Techniker" nur, wenn alle 5 Blöcke Name + Start + Ende haben (Pause darf fehlen).
+  // Ein schon eingetragener 2. Name bleibt immer sichtbar; ein leeres, geöffnetes Feld wird
+  // wieder eingeklappt, sobald die Bedingung wegfällt.
+  function updateZweitname() {
+    const rows = $$('#diaryRows .diary-row');
+    const voll = rows.length === MAX_TECH && rows.every((d) => d.querySelector('.dr-name').value.trim()
+      && timeVal(d.querySelector('.dr-start')) && timeVal(d.querySelector('.dr-ende')));
+    rows.forEach((d) => {
+      const n2 = d.querySelector('.dr-name2');
+      if (!voll && !n2.value.trim() && document.activeElement !== n2) n2.hidden = true;
+      d.querySelector('.dr-add2').hidden = !voll || !n2.hidden;
+    });
+  }
+
+  function commitTime(inp) {
+    const v = normalizeTime(inp.value, istPause(inp));
+    if (v === null) {
+      inp.classList.add('invalid');
+      toast('Ungültige Uhrzeit – bitte z. B. 0730 oder 07:30 eingeben.');
+      return;
+    }
+    inp.classList.remove('invalid');
+    inp.value = v;
+  }
+
+  function openTimePicker(box) {
+    const txt = box.querySelector('input[type="text"]');
+    const picker = box.querySelector('.dr-picker');
+    picker.value = timeVal(txt);
+    try {
+      if (typeof picker.showPicker === 'function') { picker.showPicker(); return; }
+    } catch (e) { /* Fallback unten */ }
+    picker.focus();
+    picker.click();
+  }
+
+  async function copyTimesFromFirst(row) {
+    const first = $$('#diaryRows .diary-row')[0];
+    const src = TIME_FIELDS.map((s) => timeVal(first.querySelector(s)));
+    if (!src.some(Boolean)) { toast('Bei Techniker 1 sind noch keine Zeiten eingetragen.'); return; }
+    const ziel = TIME_FIELDS.map((s) => row.querySelector(s).value.trim());
+    const gleich = ziel.every((v, k) => normalizeTime(v, k === 2) === src[k]);
+    if (!gleich && ziel.some(Boolean)) {
+      const ok = await openConfirm('Zeiten ersetzen?',
+        '<p>Bei diesem Techniker stehen schon Zeiten. Durch die Zeiten von Techniker 1 ersetzen?</p>', 'Ersetzen');
+      if (!ok) return;
+    }
+    TIME_FIELDS.forEach((s, k) => {
+      const inp = row.querySelector(s);
+      inp.value = src[k];
+      inp.classList.remove('invalid');
+    });
+    scheduleDiarySave();
+    updateZweitname();
+    toast('Zeiten von Techniker 1 übernommen');
+  }
+
+  async function removeDiaryRow(row) {
+    const hatInhalt = $$('input[type="text"], textarea', row).some((e) => e.value.trim());
+    if (hatInhalt) {
+      const ok = await openConfirm('Techniker entfernen?',
+        '<p>Name, Zeiten und Bemerkung dieses Technikers werden gelöscht.</p>', 'Entfernen', true);
+      if (!ok) return;
+    }
+    row.remove();
+    renumberDiaryRows();
+    scheduleDiarySave();
+  }
+
+  function addDiaryRow() {
+    const cont = $('#diaryRows');
+    if ($$('.diary-row', cont).length >= MAX_TECH) return;
+    const row = diaryRowEl({});
+    cont.appendChild(row);
+    renumberDiaryRows();
+    row.querySelector('.dr-name').focus();
+  }
+
+  // Einmalig: alle Knöpfe/Felder der Techniker-Blöcke über Delegation an #diaryRows.
+  function bindDiaryRows() {
+    const cont = $('#diaryRows');
+    cont.addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn || !cont.contains(btn)) return;
+      const row = btn.closest('.diary-row');
+      if (btn.classList.contains('dr-clock')) openTimePicker(btn.closest('.dr-time-box'));
+      else if (btn.classList.contains('dr-copy')) copyTimesFromFirst(row);
+      else if (btn.classList.contains('dr-del')) removeDiaryRow(row);
+      else if (btn.classList.contains('dr-add2')) {
+        const n2 = row.querySelector('.dr-name2');
+        n2.hidden = false;
+        btn.hidden = true;
+        n2.focus();
+      }
+    });
+    cont.addEventListener('change', (e) => {
+      const t = e.target;
+      if (t.classList.contains('dr-picker')) {
+        const txt = t.closest('.dr-time-box').querySelector('input[type="text"]');
+        txt.value = t.value;
+        txt.classList.remove('invalid');
+        scheduleDiarySave();
+      } else if (TIME_FIELDS.some((s) => t.matches(s))) {
+        commitTime(t);
+      }
+      updateZweitname();
+    });
+    cont.addEventListener('input', (e) => {
+      if (e.target.classList.contains('invalid')) e.target.classList.remove('invalid');
+      updateZweitname();
+    });
+    const add = $('#diaryAddRow');
+    if (add) add.onclick = addDiaryRow;
   }
 
   function gatherDiary() {
     const f = $('#diaryForm');
     const rows = $$('#diaryRows .diary-row').map((d) => ({
       name: d.querySelector('.dr-name').value.trim(),
-      start: d.querySelector('.dr-start').value,
-      ende: d.querySelector('.dr-ende').value,
-      pause: d.querySelector('.dr-pause').value,
+      name2: d.querySelector('.dr-name2').value.trim(),
+      start: timeVal(d.querySelector('.dr-start')),
+      ende: timeVal(d.querySelector('.dr-ende')),
+      pause: timeVal(d.querySelector('.dr-pause')),
       bemerkung: d.querySelector('.dr-bem').value.trim(),
-    })).filter((r) => r.name || r.start || r.ende || r.pause || r.bemerkung);
+    })).filter((r) => r.name || r.name2 || r.start || r.ende || r.pause || r.bemerkung);
 
     return {
       datum: f.datum.value,
@@ -1543,7 +1734,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v55'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v56'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;

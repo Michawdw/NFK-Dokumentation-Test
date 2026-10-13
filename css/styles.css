@@ -340,20 +340,51 @@ fieldset.techs legend { font-weight: 700; padding: 0 6px; }
 .da-del { flex: 0 0 auto; width: 40px; height: 40px; border: 1px solid #f3c4be; background: #fdecea; border-radius: 8px; font-size: 16px; }
 
 /* ---------- Diary rows ---------- */
-.diary-rows { display: grid; gap: 10px; }
-.diary-row { border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: #fff; }
-.diary-row .dr-name { font-weight: 700; margin-bottom: 6px; }
-/* minmax(0,1fr): Uhrzeit-Felder haben eine feste Mindestbreite und schoben die Zeile
-   auf schmalen Handys sonst über den Bildschirmrand. */
-.dr-times { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.dr-times input { min-width: 0; padding: 10px 6px; }
-/* Schmale Handys: Uhr-Symbol weg, sonst wird die Uhrzeit abgeschnitten.
-   Antippen des Feldes öffnet die Zeitauswahl trotzdem. */
-@media (max-width: 400px) {
-  .dr-times input::-webkit-calendar-picker-indicator { display: none; }
+/* minmax(0,1fr) überall: Felder mit fester Mindestbreite schoben die Zeile auf schmalen
+   Handys sonst über den Bildschirmrand (Seite ließ sich seitlich verschieben). */
+.diary-rows { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.diary-row { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: #fff; }
+.dr-head { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+.dr-title { flex: 1; min-width: 0; font-size: 14px; font-weight: 700; color: var(--brand); }
+.dr-head .dr-del {
+  flex: 0 0 auto; width: 36px; height: 36px; border-radius: 8px;
+  border: 1px solid #f3c4be; background: #fdecea; color: var(--warn); font-size: 15px; line-height: 1;
 }
-.dr-times label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.diary-row .dr-name { font-weight: 700; margin-top: 4px; }
+.diary-row .dr-name2 { font-weight: 700; }
+.dr-add2 {
+  display: block; margin-top: 6px; padding: 6px 2px; border: 0; background: none;
+  color: var(--brand-light); font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.diary-row .dr-copy { width: 100%; min-height: 44px; margin-top: 8px; font-size: 15px; }
+
+.dr-times { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.dr-time { min-width: 0; }
+.dr-time-label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); }
+/* Textfeld (Zahlen-Tastatur) + Uhr-Knopf rechts im Feld. Das echte Zeitfeld liegt
+   unsichtbar darunter und liefert nur die Zeitauswahl (showPicker). */
+.dr-time-box { position: relative; display: block; margin-top: 6px; }
+.diary-row .dr-time-box input[type="text"] {
+  min-width: 0; margin-top: 0; padding: 12px 34px 12px 8px;
+  font-variant-numeric: tabular-nums;
+}
+.diary-row .dr-time-box input.invalid { border-color: var(--warn); background: #fdecea; }
+.dr-clock {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 34px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0; border: 0; background: none; color: var(--brand); cursor: pointer;
+}
+.diary-row .dr-time-box .dr-picker {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0;
+  opacity: 0; pointer-events: none; border: 0;
+}
+/* Sehr schmale Handys: Start | Ende nebeneinander, Pause darunter – sonst wird „07:30"
+   neben dem Uhr-Knopf abgeschnitten. */
+@media (max-width: 359px) {
+  .dr-times { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .diary-row textarea { width: 100%; margin-top: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
+.btn.wide.dr-addrow { margin-top: 10px; }
 
 /* ---------- Modal ---------- */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: flex-end; justify-content: center; z-index: 50; }
