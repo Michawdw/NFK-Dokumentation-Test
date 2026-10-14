@@ -1,6 +1,7 @@
 /* Service Worker – Precache der App-Shell für vollständigen Offline-Betrieb.
    Cache-Version bei jeder Änderung der Asset-Liste erhöhen. */
-const CACHE = 'nfk-doku-v60';
+const CACHE = 'nfk-doku-v61';
+const TEILEN_CACHE = 'nfk-teilen';   // geteilte Datei bis zur Abholung durch die App
 
 const ASSETS = [
   './',
@@ -61,13 +62,37 @@ self.addEventListener('message', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => k !== CACHE && k !== TEILEN_CACHE).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
+
+  // Teilen-Ziel (manifest share_target): Android schickt die in WhatsApp & Co. geteilte Datei
+  // als POST hierher. Datei zwischenlagern und die App öffnen – app.js holt sie dort ab
+  // (geteiltAbholen). Ein eigener Cache, damit ein Versionswechsel sie nicht wegräumt.
+  if (req.method === 'POST' && new URL(req.url).pathname.endsWith('/teilen')) {
+    event.respondWith((async () => {
+      try {
+        const form = await req.formData();
+        const datei = form.getAll('datei').find((f) => f && typeof f !== 'string');
+        if (datei) {
+          const c = await caches.open(TEILEN_CACHE);
+          await c.put('./geteilt', new Response(datei, { headers: {
+            'Content-Type': datei.type || 'application/octet-stream',
+            'X-Dateiname': encodeURIComponent(datei.name || 'Datei'),
+          } }));
+        }
+      } catch (e) {
+        console.warn('Geteilte Datei nicht übernommen:', e);
+      }
+      return Response.redirect('./index.html?geteilt=1', 303);
+    })());
+    return;
+  }
+
   if (req.method !== 'GET') return;
 
   // Seitenaufrufe (Navigation) IMMER zuverlässig bedienen: zuerst index.html aus
