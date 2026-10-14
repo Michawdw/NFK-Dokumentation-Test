@@ -83,6 +83,15 @@ const App = (() => {
     clearTimeout(t._timer);
     t._timer = setTimeout(() => { t.hidden = true; }, ms);
   }
+  // Eine laufende Meldung („Führe Bilder zusammen…") darf nicht über einer Rückfrage stehen –
+  // sie verdeckte unten die Knöpfe und klang, als liefe der Import schon. Rückfrage-Dialoge
+  // blenden sie deshalb aus.
+  function toastWeg() {
+    const t = $('#toast');
+    if (!t) return;
+    clearTimeout(t._timer);
+    t.hidden = true;
+  }
 
   function openInfoModal(title, html) {
     $('#modalTitle').textContent = title;
@@ -129,6 +138,7 @@ const App = (() => {
   // Bestätigungs-Dialog. Liefert ein Promise<boolean> (true = bestätigt).
   function openConfirm(title, html, okLabel, danger, cancelLabel) {
     return new Promise((resolve) => {
+      toastWeg();
       $('#modalTitle').textContent = title;
       $('#modalBody').innerHTML = html;
       const cancel = $('#modalCancel'), ok = $('#modalOk'), overlay = $('#modalOverlay');
@@ -158,6 +168,7 @@ const App = (() => {
   // Abbrechen heißt hier bewusst NICHT „Import abbrechen", sondern „meine Werte behalten" –
   // deshalb ist der Knopf auch so beschriftet.
   function openChoiceModal(title, html, felder, labels) {
+    toastWeg();
     return new Promise((resolve) => {
       $('#modalTitle').textContent = title;
       $('#modalBody').innerHTML = html + felder.map((f) => {
@@ -198,6 +209,7 @@ const App = (() => {
   // direkt aus einer Nutzergeste heraus.
   function openAuswahl(title, html, optionen) {
     return new Promise((resolve) => {
+      toastWeg();
       $('#modalTitle').textContent = title;
       $('#modalBody').innerHTML = html + '<div class="bigchoice">' + optionen.map((o) =>
         `<button type="button" class="bigbtn${o.cls ? ' ' + escAttr(o.cls) : ''}" data-key="${escAttr(o.key)}">
@@ -1763,7 +1775,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v61'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v62'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
@@ -1961,7 +1973,7 @@ const App = (() => {
     if (!nr) {
       if (!ziel) return pruefeHerkunft(paket, ziel, info);
       const ok = await openConfirm('Paket einlesen?', datei
-        + `<p>Im Paket steht keine Filialnummer. In den offenen Auftrag „${name(ziel)}" einlesen?</p>`, 'Einlesen');
+        + `<p>Im Paket steht keine Filialnummer. In den offenen Auftrag „${name(ziel)}“ einlesen?</p>`, 'Einlesen');
       return ok ? pruefeHerkunft(paket, ziel, info) : null;
     }
 
@@ -1986,7 +1998,7 @@ const App = (() => {
     } else if (treffer.length === 1) {
       T = treffer[0];
       const ok = await openConfirm('Paket einlesen?', datei
-        + `<p>Paket von Filiale <b>${escHtml(nr)}</b> – mit deinem Auftrag „${name(T)}" zusammenführen?</p>
+        + `<p>Paket von Filiale <b>${escHtml(nr)}</b> – mit deinem Auftrag „${name(T)}“ zusammenführen?</p>
            <p class="hint">${xlsx ? 'Der Stand kommt dazu' : 'Bilder und Stand kommen dazu'}, nichts wird überschrieben.</p>`,
         'Einlesen');
       if (!ok) return null;

@@ -1,6 +1,6 @@
 /* Service Worker – Precache der App-Shell für vollständigen Offline-Betrieb.
    Cache-Version bei jeder Änderung der Asset-Liste erhöhen. */
-const CACHE = 'nfk-doku-v61';
+const CACHE = 'nfk-doku-v62';
 const TEILEN_CACHE = 'nfk-teilen';   // geteilte Datei bis zur Abholung durch die App
 
 const ASSETS = [
