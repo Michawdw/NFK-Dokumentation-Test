@@ -143,15 +143,19 @@ const Docx = (() => {
   // Setzt <w:keepNext/> in jeden Absatz eines XML-Stücks (ohneLetzten: den letzten Absatz
   // auslassen). Vorhandene keepNext werden vorher entfernt, damit keiner doppelt steht.
   // Einfügen direkt am Anfang von w:pPr ist schema-konform (keepNext folgt nur pStyle).
+  // Zusätzlich überall <w:keepLines/> („Diese Zeilen nicht trennen"), auch im letzten Absatz:
+  // Mehrzeiliger Text (Zeilenumbrüche per <w:br/>) ist EIN Absatz – ohne keepLines teilte
+  // Word ihn mittendrin, keepNext war damit erfüllt und der Abschnitt riss trotz
+  // Zusammenhalten über die Seite (Wochenbericht „Noch offen", bis v58).
   function keepNextXml(xml, ohneLetzten) {
-    const sauber = String(xml).replace(/<w:keepNext\/>/g, '');
+    const sauber = String(xml).replace(/<w:keepNext\/>|<w:keepLines\/>/g, '');
     const gesamt = (sauber.match(/<w:p\/>|<w:p>/g) || []).length;
     let n = 0;
     return sauber.replace(/<w:p\/>|<w:p>(<w:pPr>)?/g, (m, ppr) => {
       n++;
-      if (ohneLetzten && n === gesamt) return m;
-      if (m === '<w:p/>') return '<w:p><w:pPr><w:keepNext/></w:pPr></w:p>';
-      return ppr ? '<w:p><w:pPr><w:keepNext/>' : '<w:p><w:pPr><w:keepNext/></w:pPr>';
+      const tags = (ohneLetzten && n === gesamt) ? '<w:keepLines/>' : '<w:keepNext/><w:keepLines/>';
+      if (m === '<w:p/>') return `<w:p><w:pPr>${tags}</w:pPr></w:p>`;
+      return ppr ? `<w:p><w:pPr>${tags}` : `<w:p><w:pPr>${tags}</w:pPr>`;
     });
   }
 

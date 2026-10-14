@@ -176,8 +176,10 @@ const ExportZip = (() => {
   function addWochenberichtPhotos(zip, job, filPrefix, manifest, allePhotos) {
     const NS = '__wochenbericht__';
     const berichte = new Map(((job && job.wochenberichte) || []).map((b) => [b.id, b]));
-    // Ältere Fortschritts-Gruppen (bis v50) behalten einen lesbaren Ordnernamen.
-    const titel = new Map([['d2-nws', 'Fortschritt NWS'], ['d2-ibn', 'Fortschritt Inbetriebnahme']]);
+    // Ältere Fortschritts-Gruppen (bis v50 bzw. „Serverschränke" bis v59 – zieht beim Öffnen
+    // des Wochenberichts nach f6 um) behalten einen lesbaren Ordnernamen.
+    const titel = new Map([['d2-nws', 'Fortschritt NWS'], ['d2-ibn', 'Fortschritt Inbetriebnahme'],
+      ['d2-server', 'Fortschritt Serverschränke']]);
     for (const s of Wochenbericht.ABSCHNITTE) {
       for (const p of s.punkte) {
         titel.set(p.id, p.titel);

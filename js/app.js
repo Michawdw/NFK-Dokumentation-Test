@@ -1640,9 +1640,37 @@ const App = (() => {
     try { await autoSaveDiary(diaryDate); } catch (e) { console.warn('Auto-Speichern fehlgeschlagen', e); }
   }
 
+  // Zahl der eingetragenen Personen: Name und 2. Name zählen je für sich; „A + B" in einem
+  // Feld (so wurde es vor v56 gemacht) zählt ebenfalls als 2.
+  function zaehleNamen(rows) {
+    const teile = (s) => String(s || '').split('+').map((t) => t.trim()).filter(Boolean).length;
+    return (rows || []).reduce((n, r) => n + teile(r.name) + teile(r.name2), 0);
+  }
+
+  // „Anz. Techniker" bleibt bewusst manuell (es können mehr Leute vor Ort sein, als Zeilen
+  // ausgefüllt sind). Weicht die Zahl von den eingetragenen Namen ab, gibt es deshalb nur
+  // einen Hinweis mit „Trotzdem" – keine Sperre. Liefert true = weitermachen.
+  async function pruefeAnzahlTechniker(model, aktion) {
+    const namen = zaehleNamen(model.rows);
+    const roh = String(model.anzTechniker == null ? '' : model.anzTechniker).trim();
+    const anz = roh === '' ? null : parseInt(roh, 10);
+    if (anz === namen || (anz === null && namen === 0)) return true;
+    const links = anz === null ? '„Anz. Techniker“ ist leer' : `„Anz. Techniker“ ist <b>${anz}</b>`;
+    const rechts = namen === 1 ? 'eingetragen ist <b>1 Name</b>' : `eingetragen sind <b>${namen} Namen</b>`;
+    const ok = await openConfirm('Anzahl Techniker prüfen',
+      `<p>${links}, ${rechts}.</p><p>Trotzdem ${aktion}?</p>`, 'Trotzdem', false, 'Korrigieren');
+    if (!ok) {
+      const feld = $('#diaryForm').anzTechniker;
+      feld.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      feld.focus();
+    }
+    return ok;
+  }
+
   async function saveDiary() {
     const model = gatherDiary();
     if (!model.datum) { toast('Datum fehlt'); return; }
+    if (!(await pruefeAnzahlTechniker(model, 'speichern'))) return;
     await DB.saveDiary(currentJob.id, model);
     await renderDiaryArchive();
     const s = $('#diarySaved');
@@ -1653,6 +1681,7 @@ const App = (() => {
   async function exportDiary() {
     const model = gatherDiary();
     if (!model.datum) { toast('Datum fehlt'); return; }
+    if (!(await pruefeAnzahlTechniker(model, 'exportieren'))) return;
     await DB.saveDiary(currentJob.id, model); // immer mitspeichern
     await renderDiaryArchive();
     const h = (currentJob && currentJob.header) || {};
@@ -1734,7 +1763,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v56'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v60'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;

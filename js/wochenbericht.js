@@ -30,7 +30,9 @@ const Wochenbericht = (() => {
   // ------------------------------------------------------------ Fragenkatalog
   // Typen:  'wahl'  Auswahlknöpfe (+ optional Pflichttext, Pflichtfotos, Unterfrage)
   //         'frei'  Freitext oder Knopf „– nichts –" (nichts: Beschriftung des Knopfs)
-  //         'fotos' freiwillige Fotogruppen, zählt nicht zur Vollständigkeit
+  //         'fotos' Fotogruppen; mit pflichtMin Pflicht (Summe über alle Gruppen, Ausnahme
+  //                 per Knopf „nichts"), ohne pflichtMin freiwillig und nicht mitgezählt
+  //  frei + fotosPflicht: Fotos werden Pflicht, sobald Text eingetragen ist
   // Ampel je Option (Word-Übersicht): gruen | gelb | rot | grau
   const JA_NEIN = (jaAmpel, neinAmpel) => [
     { v: 'ja', label: 'Ja', ampel: jaAmpel }, { v: 'nein', label: 'Nein', ampel: neinAmpel }];
@@ -80,7 +82,9 @@ const Wochenbericht = (() => {
         { v: 'serverraum', label: 'im Serverraum aufgestellt', ampel: 'gruen',
           fotos: { min: 1, label: 'Foto der Netzwerkschränke (Pflicht, mindestens 1)' } },
       ] },
-      { id: 'f6', typ: 'frei', titel: 'Aufbau Serverschränke (Fortschritt)', nichts: '– noch nicht begonnen –' },
+      // Sobald etwas eingetragen ist (also nicht „noch nicht begonnen"), sind 3 Fotos Pflicht.
+      { id: 'f6', typ: 'frei', titel: 'Aufbau Serverschränke (Fortschritt)', nichts: '– noch nicht begonnen –',
+        fotosPflicht: { min: 3, label: 'Fotos der Serverschränke (Pflicht, mindestens 3)' } },
       { id: 'f7', typ: 'frei', titel: 'Inbetriebnahme (Fortschritt)', nichts: '– noch nicht begonnen –' },
       { id: 'f8', typ: 'wahl', titel: 'Aufbau Büro abgeschlossen', optionen: JA_NEIN('gruen', 'gelb') },
       { id: 'f9', typ: 'wahl', titel: 'Aufbau LiLi abgeschlossen', optionen: JA_NEIN('gruen', 'gelb') },
@@ -93,9 +97,13 @@ const Wochenbericht = (() => {
         { v: 'teilweise', label: 'teilweise', ampel: 'gelb' },
         { v: 'komplett', label: 'komplett', ampel: 'gruen' },
       ] },
-      { id: 'd2', typ: 'fotos', titel: 'Fortschrittsbilder (freiwillig, nur zur Übersicht)', gruppen: [
-        { id: 'server', label: 'Serverschränke' }, { id: 'kabel', label: 'Kabelzüge' },
-      ] },
+      // Ab v60 Pflicht: mindestens 3 Fotos, außer „kein Fortschritt diese Woche". Die Gruppe
+      // behält die id 'kabel' (früher „Kabelzüge"), damit vorhandene Fotos weiter zählen; die
+      // frühere Gruppe „Serverschränke" (d2-server) zieht nach f6 um (siehe altFotosUmziehen).
+      { id: 'd2', typ: 'fotos', titel: 'Fortschrittsbilder', pflichtMin: 3,
+        nichts: '– kein Fortschritt diese Woche –', gruppen: [
+          { id: 'kabel', label: 'Kabelzug/Ausbau Datendosen' },
+        ] },
       { id: 'd3', typ: 'wahl', titel: 'VoCoVo-Ausleuchtung übermittelt (nur zu Beginn der Baustelle)', optionen: [
         { v: 'ja', label: 'Ja', ampel: 'gruen' },
         { v: 'nein', label: 'Nein', ampel: 'gelb' },
@@ -135,7 +143,8 @@ const Wochenbericht = (() => {
     ] },
   ];
   const ALLE_PUNKTE = ABSCHNITTE.flatMap((s) => s.punkte);
-  const PFLICHT_PUNKTE = ALLE_PUNKTE.filter((p) => p.typ !== 'fotos');
+  const istPflicht = (p) => p.typ !== 'fotos' || !!p.pflichtMin;
+  const PFLICHT_PUNKTE = ALLE_PUNKTE.filter(istPflicht);
   const D2_GRUPPEN = new Set(ALLE_PUNKTE.filter((p) => p.gruppen).flatMap((p) => p.gruppen.map((g) => p.id + '-' + g.id)));
 
   // --------------------------------------------------------- Kalenderwochen
@@ -242,9 +251,16 @@ const Wochenbericht = (() => {
   // ----------------------------------------------------------- Vollständigkeit
   const voll = (s) => !!String(s || '').trim();
   function punktFertig(p) {
-    if (p.typ === 'fotos') return true;
     const a = (current && current.antworten[p.id]) || {};
-    if (p.typ === 'frei') return !!a.nichts || voll(a.text);
+    if (p.typ === 'fotos') {
+      if (!p.pflichtMin) return true;
+      return !!a.nichts || (fotoZahl.get(p.id) || 0) >= p.pflichtMin;
+    }
+    if (p.typ === 'frei') {
+      if (a.nichts) return true;
+      if (!voll(a.text)) return false;
+      return !p.fotosPflicht || (fotoZahl.get(p.id) || 0) >= p.fotosPflicht.min;
+    }
     const opt = p.optionen.find((o) => o.v === a.status);
     if (!opt) return false;
     if (opt.text && opt.text.pflicht && !voll(a.text)) return false;
@@ -263,7 +279,7 @@ const Wochenbericht = (() => {
     return { fertig, gesamt: PFLICHT_PUNKTE.length + 1 };
   }
   const abschnittStand = (s) => {
-    const pf = s.punkte.filter((p) => p.typ !== 'fotos');
+    const pf = s.punkte.filter(istPflicht);
     return { fertig: pf.filter(punktFertig).length, gesamt: pf.length };
   };
 
@@ -328,6 +344,37 @@ const Wochenbericht = (() => {
     }
   }
 
+  // Alle Fotos eines Punkts löschen (auch die seiner Fotogruppen „<pid>-<gruppe>").
+  async function fotosVerwerfen(pid) {
+    const job = App.getCurrentJob();
+    if (!job || !current) return;
+    const key = nodeKeyFor(current.id, pid);
+    for (const ph of await DB.getAllPhotos(job.id)) {
+      if (ph.nodeKey === key || String(ph.nodeKey).indexOf(key + '-') === 0) await DB.deletePhotoById(ph.id);
+    }
+    await zaehleFotos();
+  }
+
+  // Bis v59 gab es bei den Fortschrittsbildern eine Gruppe „Serverschränke" (d2-server).
+  // Ab v60 gehören diese Fotos zu „Aufbau Serverschränke" (f6) und zählen dort zu den
+  // Pflichtbildern. Einmal je Auftrag und Sitzung, für alle Wochenberichte des Auftrags.
+  const umgezogen = new Set();
+  async function altFotosUmziehen(job) {
+    if (!job || umgezogen.has(job.id)) return;
+    umgezogen.add(job.id);
+    const alt = (await DB.getAllPhotos(job.id)).filter((ph) => typeof ph.nodeKey === 'string'
+      && ph.nodeKey.indexOf(NS) === 0 && ph.nodeKey.endsWith('__d2-server'));
+    const naechste = new Map();
+    for (const ph of alt.sort((x, y) => (x.seq || 0) - (y.seq || 0))) {
+      const ziel = ph.nodeKey.slice(0, -'d2-server'.length) + 'f6';
+      if (!naechste.has(ziel)) naechste.set(ziel, (await DB.countPhotos(job.id, ziel)) + 1);
+      ph.nodeKey = ziel;
+      ph.seq = naechste.get(ziel);
+      naechste.set(ziel, ph.seq + 1);
+      await DB.updatePhoto(ph);
+    }
+  }
+
   async function fotoBlock(cont, pid, label, pflichtMin) {
     const box = document.createElement('div');
     box.className = 'wb-fotos';
@@ -381,7 +428,7 @@ const Wochenbericht = (() => {
   async function karte(p) {
     const a = antwort(p.id);
     const card = document.createElement('div');
-    card.className = 'wb-item' + (p.typ === 'fotos' ? ' neutral' : '');
+    card.className = 'wb-item' + (istPflicht(p) ? '' : ' neutral');
     card.dataset.pid = p.id;
     card.innerHTML = `<div class="wb-q"><span class="wb-check">✓</span>${escHtml(p.titel)}</div>`;
 
@@ -431,30 +478,73 @@ const Wochenbericht = (() => {
         </div>`);
       const ta = card.querySelector('.wb-frei');
       const nichtsBtn = card.querySelector('.wb-nichts');
+      // Pflichtfotos (fotosPflicht): erst sichtbar, sobald Text eingetragen ist – oder schon
+      // Fotos da sind (Text danach wieder gelöscht: die Fotos sollen nicht unsichtbar werden).
+      let pflichtBox = null;
+      if (p.fotosPflicht) {
+        pflichtBox = document.createElement('div');
+        pflichtBox.className = 'wb-pflichtfotos';
+        pflichtBox.hidden = !voll(a.text) && !(fotoZahl.get(p.id) || 0);
+        await fotoBlock(pflichtBox, p.id, p.fotosPflicht.label, p.fotosPflicht.min);
+      }
       ta.oninput = () => {
         a.text = ta.value;
         autoHoehe(ta);
         if (voll(a.text) && a.nichts) { a.nichts = false; nichtsBtn.classList.remove('active'); }
+        if (pflichtBox) pflichtBox.hidden = !voll(a.text) && !(fotoZahl.get(p.id) || 0);
         scheduleSave(); aktualisiere();
       };
       nichtsBtn.onclick = async () => {
         if (a.nichts) { a.nichts = false; await saveNow(); await render(`.wb-item[data-pid="${p.id}"]`); return; }
-        if (voll(a.text)) {
+        const nFotos = p.fotosPflicht ? (fotoZahl.get(p.id) || 0) : 0;
+        if (voll(a.text) || nFotos) {
+          const was = [voll(a.text) ? 'den eingetragenen Text' : '', nFotos ? `${nFotos} Foto(s)` : '']
+            .filter(Boolean).join(' und ');
           const ok = await App.openConfirm('Eintrag verwerfen?',
-            `<p>„${escHtml(p.nichts)}" ersetzt den eingetragenen Text.</p>`, 'Ersetzen', true);
+            `<p>„${escHtml(p.nichts)}“ ersetzt ${was}. Das kann nicht rückgängig gemacht werden.</p>`, 'Ersetzen', true);
           if (!ok) return;
         }
+        if (nFotos) await fotosVerwerfen(p.id);
         a.text = ''; a.nichts = true;
         await saveNow(); await render(`.wb-item[data-pid="${p.id}"]`);
       };
       const btb = card.querySelector('.wb-btb');
       if (btb) btb.onclick = () => ausBautagebuch(a);
+      if (pflichtBox) card.appendChild(pflichtBox);
       if (p.fotosFrei) await fotoBlock(card, p.id, p.fotosFrei, 0);
     }
 
-    if (p.typ === 'fotos') {
+    if (p.typ === 'fotos' && !p.pflichtMin) {
       card.insertAdjacentHTML('beforeend', '<p class="hint wb-fotohint">Rein informativ für den Innendienst – unabhängig von der Bilddokumentation.</p>');
       for (const g of p.gruppen) await fotoBlock(card, p.id + '-' + g.id, g.label, 0);
+    } else if (p.typ === 'fotos') {
+      // Pflicht-Fotogruppe(n): bei „kein Fortschritt" ausgeblendet. Die Mindestzahl gilt für
+      // alle Gruppen zusammen; bei einer Gruppe steht sie direkt in deren Beschriftung.
+      if (!a.nichts) {
+        const eine = p.gruppen.length === 1;
+        const fehlt = (fotoZahl.get(p.id) || 0) < p.pflichtMin;
+        for (const g of p.gruppen) {
+          await fotoBlock(card, p.id + '-' + g.id,
+            eine ? `${g.label} (Pflicht, mindestens ${p.pflichtMin})` : g.label, eine && fehlt ? p.pflichtMin : 0);
+        }
+      }
+      card.insertAdjacentHTML('beforeend', `<div class="toolrow wb-freibtns">
+          <button type="button" class="btn ghost wb-nichts${a.nichts ? ' active' : ''}">${escHtml(p.nichts)}</button>
+        </div>`);
+      card.querySelector('.wb-nichts').onclick = async () => {
+        if (!a.nichts) {
+          const nFotos = fotoZahl.get(p.id) || 0;
+          if (nFotos) {
+            const ok = await App.openConfirm('Fotos verwerfen?',
+              `<p>„${escHtml(p.nichts)}“ entfernt ${nFotos} Foto(s) aus diesem Punkt. Das kann nicht rückgängig gemacht werden.</p>`,
+              'Entfernen', true);
+            if (!ok) return;
+            await fotosVerwerfen(p.id);
+          }
+        }
+        a.nichts = !a.nichts;
+        await saveNow(); await render(`.wb-item[data-pid="${p.id}"]`);
+      };
     }
     return card;
   }
@@ -465,7 +555,7 @@ const Wochenbericht = (() => {
     if (!current) return;
     for (const p of ALLE_PUNKTE) {
       const el = document.querySelector(`.wb-item[data-pid="${p.id}"]`);
-      if (!el || p.typ === 'fotos') continue;
+      if (!el || !istPflicht(p)) continue;
       const ok = punktFertig(p);
       el.classList.toggle('done', ok);
       el.classList.toggle('missing', pruefModus && !ok);
@@ -630,10 +720,15 @@ const Wochenbericht = (() => {
       .filter((d) => d.datum >= von && d.datum <= bis && voll(d.taetigkeiten))
       .sort((x, y) => (x.datum < y.datum ? -1 : 1));
     if (!tage.length) { App.toast(`Keine Bautagebuch-Tätigkeiten in ${kwText(current.kw)} gefunden.`); return; }
+    // Je Tag: „Mo 12.10.:" als eigene Zeile, darunter die Tätigkeiten mit den Zeilenumbrüchen
+    // aus dem Bautagebuch (Leerzeilen darin entfallen), zwischen den Tagen eine Leerzeile.
+    // Steht so schon im Textfeld – der Word-Bericht übernimmt es 1:1.
     const text = tage.map((d) => {
       const dt = new Date(d.datum + 'T12:00:00');
-      return `${WT[dt.getDay()]} ${kurz(dt)}: ${String(d.taetigkeiten).replace(/\s+/g, ' ').trim()}`;
-    }).join('\n');
+      const zeilen = String(d.taetigkeiten).split(/\r?\n/)
+        .map((z) => z.replace(/\s+/g, ' ').trim()).filter(Boolean);
+      return `${WT[dt.getDay()]} ${kurz(dt)}:\n${zeilen.join('\n')}`;
+    }).join('\n\n');
     if (voll(a.text)) {
       const ok = await App.openConfirm('Text ersetzen?',
         '<p>Im Feld steht schon etwas. Durch die Tätigkeiten aus dem Bautagebuch ersetzen?</p>', 'Ersetzen');
@@ -747,9 +842,12 @@ const Wochenbericht = (() => {
       for (const p of s.punkte) {
         if (p.typ === 'fotos') {
           const n = fotoZahl.get(p.id) || 0;
-          rows.push({ cells: [{ text: p.titel.replace(/\s*\(.*\)$/, ''), sz: 20 },
-            { text: n ? n + ' Foto(s)' : 'keine', sz: 20 },
-            { text: AMPEL.grau.zeichen, fill: AMPEL.grau.fill, color: AMPEL.grau.color, bold: true, align: 'center' }] });
+          const a = current.antworten[p.id] || {};
+          const pflicht = !!p.pflichtMin;
+          const text = pflicht && a.nichts ? p.nichts.replace(/^–\s*|\s*–$/g, '') : (n ? n + ' Foto(s)' : 'keine');
+          const am = pflicht && !a.nichts ? AMPEL.gruen : AMPEL.grau;
+          rows.push({ cells: [{ text: p.titel.replace(/\s*\(.*\)$/, ''), sz: 20 }, { text, sz: 20 },
+            { text: am.zeichen, fill: am.fill, color: am.color, bold: true, align: 'center' }] });
           continue;
         }
         const at = antwortText(p);
@@ -784,13 +882,26 @@ const Wochenbericht = (() => {
       let hoehe = 0.85;
       const punkte = [];                   // [von, bis] je Punkt
       doc.push(Docx.pBar(`${i + 1}. ${s.titel}`, BLAU));
-      for (const p of s.punkte) {
+      let endetMitFotos = false;           // photoGrid hängt selbst schon einen Leerabsatz an
+      for (const [k, p] of s.punkte.entries()) {
         const a = current.antworten[p.id] || {};
+        // Leerzeile zwischen den Punkten (übersichtlicher). Sie gehört noch zum vorigen Punkt
+        // (dessen Block endet erst danach), damit sie beim Umbruch unten auf der Seite bleibt
+        // und keine neue Seite mit einer Leerzeile beginnt. Endete der vorige Punkt mit Fotos,
+        // steht der Pflicht-Absatz nach der Fototabelle schon da – sonst wären es zwei.
+        if (k > 0) {
+          if (!endetMitFotos) { doc.push(Docx.pEmpty()); hoehe += 0.6; }
+          punkte[punkte.length - 1][1] = doc.mark();
+        }
+        endetMitFotos = false;
         const von = doc.mark();
         doc.push(Docx.pStyled(p.titel, { bold: true, color: BLAU, after: 40, keepNext: true }));
         hoehe += textCm(p.titel);
-        const text = (t, stil) => { doc.push(Docx.pStyled(t, stil)); hoehe += textCm(t); };
-        const fotos = async (items) => { await doc.photoGrid(items); hoehe += fotoCm(items.length); };
+        const text = (t, stil) => { doc.push(Docx.pStyled(t, stil)); hoehe += textCm(t); endetMitFotos = false; };
+        const fotos = async (items) => {
+          await doc.photoGrid(items); hoehe += fotoCm(items.length);
+          if (items.length) endetMitFotos = true;
+        };
         if (p.typ === 'wahl') {
           const at = antwortText(p);
           const am = AMPEL[at.ampel] || AMPEL.grau;
@@ -806,7 +917,9 @@ const Wochenbericht = (() => {
         } else if (p.typ === 'frei') {
           if (a.nichts) text(p.nichts, { color: '5A6672', after: 60 });
           else text(a.text, { after: 60 });
-          if (p.fotosFrei) await fotos(await fotoItems(p.id));
+          if (p.fotosFrei || (p.fotosPflicht && !a.nichts)) await fotos(await fotoItems(p.id));
+        } else if (p.typ === 'fotos' && p.pflichtMin && a.nichts) {
+          text(p.nichts, { color: '5A6672', after: 60 });
         } else if (p.typ === 'fotos') {
           let irgendwas = false;
           for (const g of p.gruppen) {
@@ -867,6 +980,7 @@ const Wochenbericht = (() => {
   async function enter() {
     const job = App.getCurrentJob();
     if (!job) return;
+    try { await altFotosUmziehen(job); } catch (e) { console.warn('Fotos „Serverschränke" umziehen fehlgeschlagen', e); }
     // Rückkehr aus einem anderen Bereich: den zuletzt geöffneten Bericht weiterzeigen.
     // Nach einem Auftragswechsel hat reset() ihn verworfen – dann die aktuelle KW.
     if (current) { await zaehleFotos(); await render(); return; }
