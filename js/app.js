@@ -1775,7 +1775,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v62'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v63'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
@@ -1832,9 +1832,6 @@ const App = (() => {
       console.error('Init-Fehler (Auftragsdaten):', e);
       toast('Hinweis: Gespeicherte Daten konnten nicht geladen werden.');
     }
-    // Per „Teilen" angekommene Datei (WhatsApp & Co.) einlesen – erst jetzt, wenn die
-    // Aufträge geladen sind und die Startseite steht.
-    try { await geteiltAbholen(); } catch (e) { console.error('Teilen-Import:', e); }
     // Persistenten Speicher anfordern (schützt Bilder vor automatischer Löschung).
     try {
       if (navigator.storage && navigator.storage.persist) await navigator.storage.persist();
@@ -1911,124 +1908,6 @@ const App = (() => {
     if (art === 'xlsx') return handoverImport(file);
     if (art === 'zip') return mergeContribution(zip, file.name);
     toast(UNBEKANNT);
-  }
-
-  // ------------------------------------------------- Teilen-Ziel (WhatsApp & Co.)
-  // In WhatsApp lange auf die Datei tippen → Teilen → „NFK Doku": sw.js legt die Datei im
-  // Cache 'nfk-teilen' ab und öffnet index.html?geteilt=1. Hier wird sie abgeholt und –
-  // anders als über die Knöpfe – dem passenden Auftrag zugeordnet (pruefeHerkunftTeilen).
-  const TEILEN_CACHE = 'nfk-teilen';
-  async function geteiltAbholen() {
-    if (!/[?&]geteilt=1\b/.test(location.search)) return;
-    history.replaceState(history.state, '', location.pathname);   // kein zweiter Import beim Neuladen
-    if (!('caches' in window)) return;
-    let file = null;
-    try {
-      const c = await caches.open(TEILEN_CACHE);
-      const res = await c.match('./geteilt');
-      if (res) {
-        const name = decodeURIComponent(res.headers.get('X-Dateiname') || 'Datei');
-        file = new File([await res.blob()], name, { type: res.headers.get('Content-Type') || '' });
-        await c.delete('./geteilt');
-      }
-    } catch (e) {
-      console.warn('Geteilte Datei nicht lesbar:', e);
-    }
-    if (!file) { toast('Die geteilte Datei ist nicht angekommen – bitte noch einmal teilen.', 5000); return; }
-    await teilenImport(file);
-  }
-
-  async function teilenImport(file) {
-    toast('Lese geteilte Datei…');
-    const { art, zip } = await dateiArt(file);
-    const pruefen = (paket, ziel, info) => pruefeHerkunftTeilen(paket, ziel, info, file.name);
-    if (art === 'xlsx') return handoverImport(file, pruefen);   // räumt leeren Vorgänger selbst weg
-    if (art === 'zip') {
-      const vorher = currentJob;
-      await mergeContribution(zip, file.name, pruefen);
-      // Wurde in einen anderen Auftrag eingelesen, den leeren Vorgänger entfernen – sonst
-      // stünden nach dem Teilen auf einem frischen Handy zwei Aufträge in der Liste.
-      if (vorher && currentJob && vorher.id !== currentJob.id && await entferneLeerenVorlaeufer(vorher, currentJob)) {
-        await loadStartView();
-      }
-      return;
-    }
-    toast(UNBEKANNT, 5000);
-  }
-
-  // Wie pruefeHerkunft, aber der Zielauftrag wird über ALLE Aufträge gesucht (vierstellige
-  // Filialnummer) statt den gerade offenen anzunehmen – beim Teilen ist meist irgendein
-  // anderer Auftrag offen, und die Warnung „Andere Filiale!" käme sonst fast jedes Mal.
-  // Genau eine Rückfrage vorab; danach der gewohnte Stammdaten-Vergleich (pruefeHerkunft).
-  async function pruefeHerkunftTeilen(paket, ziel, info, dateiname) {
-    const xlsx = !!(info && info.xlsx);
-    const nr = paket.filialNr;
-    const datei = `<p class="hint">Datei: ${escHtml(dateiname || '')}</p>`;
-    const name = (j) => {
-      const n = String(j.name || '').trim(), f = String((j.header || {}).filiale || '').trim();
-      return escHtml(n && f && !n.includes(f) ? `${n} (${f})` : (n || f || 'Auftrag'));
-    };
-
-    // Paket ohne Filialnummer (sehr alte ZIP): in den offenen Auftrag, wie über die Knöpfe.
-    if (!nr) {
-      if (!ziel) return pruefeHerkunft(paket, ziel, info);
-      const ok = await openConfirm('Paket einlesen?', datei
-        + `<p>Im Paket steht keine Filialnummer. In den offenen Auftrag „${name(ziel)}“ einlesen?</p>`, 'Einlesen');
-      return ok ? pruefeHerkunft(paket, ziel, info) : null;
-    }
-
-    const treffer = (await DB.listJobs()).filter((j) => filialNr((j.header || {}).filiale) === nr);
-    let T = null;
-    if (treffer.length > 1) {
-      // Datum mit Uhrzeit und Bildanzahl – Doppel heißen oft gleich und sind vom selben Tag.
-      const wann = (ms) => (ms ? new Date(ms).toLocaleString('de-DE',
-        { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '–');
-      treffer.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-      const optionen = [];
-      for (const j of treffer) {
-        const bilder = (await DB.getBilddokuPhotos(j.id)).length;
-        optionen.push({ key: j.id, emoji: '📁', titel: j.name || (j.header || {}).filiale || 'Auftrag',
-          sub: `${(j.header || {}).filiale || ''} · ${bilder} Bild(er) · zuletzt geändert ${wann(j.updatedAt)}` });
-      }
-      const wahl = await openAuswahl('Welcher Auftrag?',
-        `${datei}<p>Auf diesem Handy gibt es ${treffer.length} Aufträge für Filiale <b>${escHtml(nr)}</b>.
-           In welchen soll das Paket?</p>`, optionen);
-      if (!wahl) return null;
-      T = treffer.find((j) => j.id === wahl);
-    } else if (treffer.length === 1) {
-      T = treffer[0];
-      const ok = await openConfirm('Paket einlesen?', datei
-        + `<p>Paket von Filiale <b>${escHtml(nr)}</b> – mit deinem Auftrag „${name(T)}“ zusammenführen?</p>
-           <p class="hint">${xlsx ? 'Der Stand kommt dazu' : 'Bilder und Stand kommen dazu'}, nichts wird überschrieben.</p>`,
-        'Einlesen');
-      if (!ok) return null;
-    }
-
-    if (T) {
-      const r = await pruefeHerkunft(paket, T, info);   // gleiche Filiale: nur Stammdaten-Vergleich
-      if (!r) return null;
-      if (xlsx) {
-        // Datei gehört genau zu diesem Auftrag (gleiche id) → Standardweg, sonst weich einlesen.
-        const gleich = !(info && info.neu) && ziel && ziel.id === T.id;
-        return gleich ? r : Object.assign({}, r, { ziel: 'wechseln', zielJob: T });
-      }
-      const offen = currentJob && currentJob.id === T.id;
-      return offen ? Object.assign({}, r, { ziel: 'aktuell' }) : Object.assign({}, r, { ziel: 'wechseln', zielJob: T });
-    }
-
-    // Kein passender Auftrag auf dem Handy: als neue Baustelle übernehmen.
-    if (!xlsx && !paket.hatUebergabe) {
-      // Ohne Übergabe-Daten lässt sich kein Auftrag anlegen – bisheriger Weg mit Warnung.
-      return pruefeHerkunft(paket, ziel, info);
-    }
-    const ok = await openConfirm('Neue Baustelle übernehmen?', datei
-      + `<p>Filiale <b>${escHtml(nr)}</b> gibt es auf diesem Handy noch nicht. Als neue Baustelle übernehmen?</p>
-         <p class="hint">Stammdaten${xlsx ? '' : ', Bilder'} und Stand kommen aus dem Paket – die Vorprüfung entfällt.</p>`,
-      'Übernehmen');
-    if (!ok) return null;
-    // Neuer Auftrag komplett aus dem Paket; ein leerer Vorgänger („Auftrag 1") verschwindet
-    // danach in teilenImport (entferneLeerenVorlaeufer). Handover legt ihn selbst an.
-    return xlsx ? { kopfFelder: [] } : { kopfFelder: [], ziel: 'neu' };
   }
 
   // Wird von Merge/Handover aufgerufen, sobald der Kopf des Pakets gelesen ist und bevor
@@ -2128,14 +2007,14 @@ const App = (() => {
     return antwort;
   }
 
-  async function mergeContribution(zip, dateiname, pruefen) {
+  async function mergeContribution(zip, dateiname) {
     toast('Führe Bilder zusammen…');
     try {
       // Offene Eingaben gehören noch zum bisherigen Auftrag – der Import kann gleich wechseln.
       await flushDiary();
       await Vorpruefung.flush();
       await Wochenbericht.flush();
-      const r = await Merge.importContributionZip(zip, { dateiname, pruefen: pruefen || pruefeHerkunft });
+      const r = await Merge.importContributionZip(zip, { dateiname, pruefen: pruefeHerkunft });
       if (r.abgebrochen) { toast('Import abgebrochen – nichts verändert.'); return; }
       if ((r.jobNeu || r.gewechselt) && aktiveView === 'view-bilddoku') await enterBilddoku();
       await renderTree();
@@ -2190,7 +2069,7 @@ const App = (() => {
     }
   }
 
-  async function handoverImport(file, pruefen) {
+  async function handoverImport(file) {
     toast('Lese Übergabe-Datei…');
     const vorher = currentJob;
     try {
@@ -2198,7 +2077,7 @@ const App = (() => {
       await flushDiary();
       await Vorpruefung.flush();
       await Wochenbericht.flush();
-      const r = await Handover.importXlsx(file, { pruefen: pruefen || pruefeHerkunft });
+      const r = await Handover.importXlsx(file, { pruefen: pruefeHerkunft });
       if (!r) { toast('Import abgebrochen – nichts verändert.'); return; }
       const job = r.job;
       await adoptJob(job);
