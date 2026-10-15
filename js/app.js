@@ -1222,10 +1222,21 @@ const App = (() => {
     const oberOptions = [{ value: '__new__', label: '➕ Neuer Bereich…' }]
       .concat(obers.map((o) => ({ value: o, label: o })));
 
+    // Unterordner je Bereich – eigene Unterordner stecken in den Custom-Namen und tauchen
+    // dadurch beim nächsten Öffnen automatisch hier mit auf.
+    const unterOptionen = (ober) => {
+      const unters = Array.from(new Set(nodes.filter((n) => n.ober === ober && n.unter).map((n) => n.unter)));
+      return [{ value: '__none__', label: '– keiner (direkt im Bereich) –' }]
+        .concat(unters.map((u) => ({ value: u, label: u })))
+        .concat([{ value: '__new__', label: '➕ Neuer Unterordner…' }]);
+    };
+    const startOber = obers[0] || '__new__';
+
     openFormModal('Eigenen Namen anlegen', [
-      { name: 'oberSelect', label: 'Bereich (Oberordner)', type: 'select', options: oberOptions, value: obers[0] || '__new__' },
-      { name: 'oberNew', label: 'Neuer Bereich (falls oben „Neuer Bereich")', placeholder: 'z. B. 06_Sonstiges' },
-      { name: 'unter', label: 'Unterordner (optional)', placeholder: 'leer = direkt im Bereich' },
+      { name: 'oberSelect', label: 'Bereich (Oberordner)', type: 'select', options: oberOptions, value: startOber },
+      { name: 'oberNew', label: 'Neuer Bereich', placeholder: 'z. B. 06_Sonstiges' },
+      { name: 'unterSelect', label: 'Unterordner (optional)', type: 'select', options: unterOptionen(startOber), value: '__none__' },
+      { name: 'unterNew', label: 'Neuer Unterordner', placeholder: 'z. B. Kasse 3' },
       { name: 'bildname', label: 'Bildname', placeholder: 'z. B. Detailaufnahme', required: true },
       { name: 'pflicht', label: 'Pflichtanzahl', type: 'number', value: '1' },
     ], async (data) => {
@@ -1233,7 +1244,8 @@ const App = (() => {
       const bildname = (data.bildname || '').trim();
       if (!ober) ober = 'Allgemein';
       if (!bildname) { toast('Bildname fehlt'); return false; }
-      const unter = (data.unter || '').trim() || null;
+      const unter = data.unterSelect === '__new__' ? ((data.unterNew || '').trim() || null)
+        : data.unterSelect === '__none__' ? null : data.unterSelect;
       let pflicht = parseInt(data.pflicht, 10);
       if (!Number.isFinite(pflicht) || pflicht < 0) pflicht = 1;
       const node = {
@@ -1244,6 +1256,27 @@ const App = (() => {
       await renderTree();
       toast('Name angelegt');
     });
+
+    // Freitextfelder nur zeigen, wenn „Neu…" gewählt ist; Unterordner-Liste folgt dem Bereich.
+    const body = $('#modalBody');
+    const oberSel = $('[name="oberSelect"]', body);
+    const unterSel = $('[name="unterSelect"]', body);
+    const zeige = (name, an) => { $(`[name="${name}"]`, body).closest('label').hidden = !an; };
+    const aktualisieren = () => {
+      zeige('oberNew', oberSel.value === '__new__');
+      zeige('unterNew', unterSel.value === '__new__');
+    };
+    oberSel.addEventListener('change', () => {
+      unterSel.innerHTML = unterOptionen(oberSel.value).map((o) =>
+        `<option value="${escAttr(o.value)}">${escHtml(o.label)}</option>`).join('');
+      unterSel.value = '__none__';
+      aktualisieren();
+    });
+    unterSel.addEventListener('change', () => {
+      aktualisieren();
+      if (unterSel.value === '__new__') $('[name="unterNew"]', body).focus();
+    });
+    aktualisieren();
   }
 
   // -------------------------------------------------- Template importieren
@@ -1780,7 +1813,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v64'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v65'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
