@@ -807,6 +807,12 @@ const Wochenbericht = (() => {
     return { text, ampel };
   }
 
+  // Ampel eines Foto-Punkts: Pflicht-Fotos erledigt = grün, sonst neutral.
+  function fotoAmpel(p) {
+    const a = current.antworten[p.id] || {};
+    return p.pflichtMin && !a.nichts ? AMPEL.gruen : AMPEL.grau;
+  }
+
   // „Was fehlt? (Pflichtfeld)" -> „Was fehlt" – im Bericht folgt direkt der Doppelpunkt.
   const labelKurz = (l) => String(l).replace(/\s*\(Pflichtfeld\)/, '').replace(/[?:]\s*$/, '');
 
@@ -836,23 +842,27 @@ const Wochenbericht = (() => {
       { text: 'Antwort', bold: true, fill: 'DCE6F1', color: BLAU },
       { text: 'Status', bold: true, fill: 'DCE6F1', color: BLAU, align: 'center' },
     ] }];
+    // Punkte sind nummeriert (3.4) wie die Karten im Detailteil; ein Klick auf Abschnitt
+    // oder Punkt springt in Word bzw. im PDF dorthin (Textmarken A3 / P3_4).
     ABSCHNITTE.forEach((s, i) => {
-      rows.push({ cells: [{ text: `${i + 1}. ${s.titel}`, bold: true, fill: 'F3F6F9', color: BLAU },
+      rows.push({ cells: [{ text: `${i + 1}. ${s.titel}`, bold: true, fill: 'F3F6F9', color: BLAU, anker: `A${i + 1}` },
         { text: '', fill: 'F3F6F9' }, { text: '', fill: 'F3F6F9' }] });
-      for (const p of s.punkte) {
+      for (const [k, p] of s.punkte.entries()) {
+        const nr = `${i + 1}.${k + 1}  `;
+        const anker = `P${i + 1}_${k + 1}`;
         if (p.typ === 'fotos') {
           const n = fotoZahl.get(p.id) || 0;
           const a = current.antworten[p.id] || {};
           const pflicht = !!p.pflichtMin;
           const text = pflicht && a.nichts ? p.nichts.replace(/^–\s*|\s*–$/g, '') : (n ? n + ' Foto(s)' : 'keine');
-          const am = pflicht && !a.nichts ? AMPEL.gruen : AMPEL.grau;
-          rows.push({ cells: [{ text: p.titel.replace(/\s*\(.*\)$/, ''), sz: 20 }, { text, sz: 20 },
+          const am = fotoAmpel(p);
+          rows.push({ cells: [{ text: nr + p.titel.replace(/\s*\(.*\)$/, ''), sz: 20, anker }, { text, sz: 20 },
             { text: am.zeichen, fill: am.fill, color: am.color, bold: true, align: 'center' }] });
           continue;
         }
         const at = antwortText(p);
         const am = AMPEL[at.ampel] || AMPEL.grau;
-        rows.push({ cells: [{ text: p.titel, sz: 20 }, { text: at.text, sz: 20 },
+        rows.push({ cells: [{ text: nr + p.titel, sz: 20, anker }, { text: at.text, sz: 20 },
           { text: am.zeichen, fill: am.fill, color: am.color, bold: true, align: 'center' }] });
       }
     });
@@ -860,52 +870,36 @@ const Wochenbericht = (() => {
     doc.push(Docx.pStyled('✓ erledigt / in Ordnung   ◐ teilweise / in Arbeit   ! kritisch – bitte beachten   – neutral',
       { sz: 16, color: '5A6672' }));
 
-    // Abschnitte im Detail. Seitenumbruch-Regel (Michael): Passt ein Abschnitt nicht mehr
-    // vollständig auf die angefangene Seite, beginnt er komplett auf einer neuen. Nur ein
-    // Abschnitt, der allein schon länger als eine Seite ist, darf umbrechen – dann bleibt
-    // wenigstens jeder einzelne Punkt (Frage, Antwort, Fotos) beisammen. Word kennt dafür
-    // „Absatz mit nächstem zusammenhalten"; die Länge schätzen wir beim Aufbau mit.
-    // Werte in cm, an einem echten Bericht in Word nachgemessen: einzeiliger Absatz samt
-    // Abstand 0,6 · jede weitere Zeile 0,47 · Fotozeile (Bild 6 cm + Unterschrift) 7,5 ·
-    // Balken 0,85. Nutzbare Seitenhöhe A4 mit 2-cm-Rändern: 25,7. Die Grenze liegt bewusst
-    // etwas darüber: Ist ein zusammengehaltener Abschnitt doch zu lang, setzt Word ihn auf
-    // eine neue Seite und bricht dann normal um (geprüft) – harmlos. Umgekehrt (zu knapp
-    // geschätzt) würde ein passender Abschnitt zerrissen, genau das soll nicht passieren.
+    // Abschnitte im Detail – jeder Punkt als Karte (Rahmen, Kopf mit Nummer und Status).
+    // Seitenumbruch-Regel (Michael): Passt ein Abschnitt nicht mehr vollständig auf die
+    // angefangene Seite, beginnt er komplett auf einer neuen. Ein Abschnitt, der allein schon
+    // länger als eine Seite ist, beginnt ebenfalls oben auf einer neuen Seite (v66) und darf
+    // dann zwischen den Karten umbrechen – jede Karte bleibt beisammen. Nur eine Karte, die
+    // selbst länger als eine Seite ist (viele Fotos), bricht zwischen ihren Fotozeilen um;
+    // ihre Kopfzeile wiederholt sich dann auf der neuen Seite.
+    // Word kennt dafür „Absatz mit nächstem zusammenhalten"; die Höhe schätzt Docx.card().
+    // Nutzbare Seitenhöhe A4 mit 2-cm-Rändern: 25,7 cm. Die Grenze liegt bewusst etwas
+    // darüber: Ist ein zusammengehaltener Block doch zu lang, setzt Word ihn auf eine neue
+    // Seite und bricht dann normal um – harmlos. Zu knapp geschätzt würde ein passender
+    // Abschnitt zerrissen, genau das soll nicht passieren.
     const SEITE_CM = 26;
-    const zeilen = (t) => String(t || '').split(/\r?\n/)
-      .reduce((n, z) => n + Math.max(1, Math.ceil(z.length / 95)), 0);
-    const textCm = (t) => 0.47 * zeilen(t) + 0.13;
-    const fotoCm = (n) => (n ? Math.ceil(n / 2) * 7.0 + 0.5 : 0);
+    const passt = (cm) => cm <= SEITE_CM;
     for (let i = 0; i < ABSCHNITTE.length; i++) {
       const s = ABSCHNITTE[i];
       const abschnittStart = doc.mark();
       let hoehe = 0.85;
-      const punkte = [];                   // [von, bis] je Punkt
-      doc.push(Docx.pBar(`${i + 1}. ${s.titel}`, BLAU));
-      let endetMitFotos = false;           // photoGrid hängt selbst schon einen Leerabsatz an
+      const punkte = [];                   // [von, bis, hoeheCm] je Karte
+      doc.push(Docx.pBar(`${i + 1}. ${s.titel}`, BLAU, `A${i + 1}`));
       for (const [k, p] of s.punkte.entries()) {
         const a = current.antworten[p.id] || {};
-        // Leerzeile zwischen den Punkten (übersichtlicher). Sie gehört noch zum vorigen Punkt
-        // (dessen Block endet erst danach), damit sie beim Umbruch unten auf der Seite bleibt
-        // und keine neue Seite mit einer Leerzeile beginnt. Endete der vorige Punkt mit Fotos,
-        // steht der Pflicht-Absatz nach der Fototabelle schon da – sonst wären es zwei.
-        if (k > 0) {
-          if (!endetMitFotos) { doc.push(Docx.pEmpty()); hoehe += 0.6; }
-          punkte[punkte.length - 1][1] = doc.mark();
-        }
-        endetMitFotos = false;
-        const von = doc.mark();
-        doc.push(Docx.pStyled(p.titel, { bold: true, color: BLAU, after: 40, keepNext: true }));
-        hoehe += textCm(p.titel);
-        const text = (t, stil) => { doc.push(Docx.pStyled(t, stil)); hoehe += textCm(t); endetMitFotos = false; };
-        const fotos = async (items) => {
-          await doc.photoGrid(items); hoehe += fotoCm(items.length);
-          if (items.length) endetMitFotos = true;
-        };
+        const inhalt = [];
+        const text = (t, stil) => inhalt.push({ text: t, stil });
+        const fotos = (items) => { if (items.length) inhalt.push({ fotos: items }); };
+        let status;
         if (p.typ === 'wahl') {
           const at = antwortText(p);
-          const am = AMPEL[at.ampel] || AMPEL.grau;
-          text(at.text, { bold: true, color: am.color, after: 60 });
+          status = AMPEL[at.ampel] || AMPEL.grau;
+          text(at.text, { bold: true, color: status.color, after: 60 });
           const opt = p.optionen.find((x) => x.v === a.status);
           if (opt && opt.text && voll(a.text)) text(labelKurz(opt.text.label) + ': ' + a.text, { after: 60 });
           if (opt && opt.unter) {
@@ -913,33 +907,57 @@ const Wochenbericht = (() => {
             if (uo && uo.text && voll(a.unter.text)) text(labelKurz(uo.text.label) + ': ' + a.unter.text, { after: 60 });
           }
           if (voll(a.notiz)) text('Notiz: ' + a.notiz, { italic: true, color: '5A6672', after: 60 });
-          if (opt && opt.fotos) await fotos(await fotoItems(p.id));
+          if (opt && opt.fotos) fotos(await fotoItems(p.id));
         } else if (p.typ === 'frei') {
+          status = AMPEL[antwortText(p).ampel] || AMPEL.grau;
           if (a.nichts) text(p.nichts, { color: '5A6672', after: 60 });
           else text(a.text, { after: 60 });
-          if (p.fotosFrei || (p.fotosPflicht && !a.nichts)) await fotos(await fotoItems(p.id));
-        } else if (p.typ === 'fotos' && p.pflichtMin && a.nichts) {
-          text(p.nichts, { color: '5A6672', after: 60 });
+          if (p.fotosFrei || (p.fotosPflicht && !a.nichts)) fotos(await fotoItems(p.id));
         } else if (p.typ === 'fotos') {
-          let irgendwas = false;
-          for (const g of p.gruppen) {
-            const items = await fotoItems(p.id + '-' + g.id);
-            if (!items.length) continue;
-            irgendwas = true;
-            text(g.label, { bold: true, sz: 20, after: 40, keepNext: true });
-            await fotos(items);
+          status = fotoAmpel(p);
+          if (p.pflichtMin && a.nichts) text(p.nichts, { color: '5A6672', after: 60 });
+          else {
+            let irgendwas = false;
+            for (const g of p.gruppen) {
+              const items = await fotoItems(p.id + '-' + g.id);
+              if (!items.length) continue;
+              irgendwas = true;
+              text(g.label, { bold: true, sz: 20, after: 40 });
+              fotos(items);
+            }
+            if (!irgendwas) text('keine Fortschrittsbilder', { color: '5A6672', after: 60 });
           }
-          if (!irgendwas) text('keine Fortschrittsbilder', { color: '5A6672', after: 60 });
         }
-        punkte.push([von, doc.mark()]);
+        const karte = await doc.card({
+          nr: `${i + 1}.${k + 1}`,
+          titel: p.typ === 'fotos' ? p.titel.replace(/\s*\(.*\)$/, '') : p.titel,
+          anker: `P${i + 1}_${k + 1}`,
+          status: status || AMPEL.grau,
+          inhalt,
+        });
+        const von = doc.mark();
+        doc.push(karte.xml);
+        punkte.push([von, doc.mark(), karte.hoeheCm]);
+        hoehe += karte.hoeheCm;
       }
-      if (hoehe <= SEITE_CM) doc.keepTogether(abschnittStart);
+      if (passt(hoehe)) doc.keepTogether(abschnittStart);
       else {
-        // Balken an den ersten Punkt binden, dann jeden Punkt für sich zusammenhalten.
-        doc.keepTogether(abschnittStart, punkte[0][1]);
-        for (const [von, bis] of punkte.slice(1)) doc.keepTogether(von, bis);
+        // Der Abschnitt beginnt oben auf einer Seite (s. u.). Balken und so viele Karten, wie auf
+        // diese Seite passen, bleiben zusammen – sonst stünde z. B. „4.1" allein auf der Seite und
+        // die große Fotokarte „4.2" rutschte auf die nächste (fast leere Seite, Test v67).
+        // Danach jede Karte für sich. Eine überlange Karte bleibt frei (der Balken hängt per
+        // keepNext trotzdem an ihr).
+        let n = 0;
+        for (let summe = 0.85; n < punkte.length && passt(summe + punkte[n][2]); n++) summe += punkte[n][2];
+        if (n > 0) doc.keepTogether(abschnittStart, punkte[n - 1][1]);
+        for (const [von, bis, cm] of punkte.slice(n)) if (passt(cm)) doc.keepTogether(von, bis);
+        // Ein überlanger Abschnitt beginnt trotzdem auf einer neuen Seite (Michael, v66) –
+        // bis v65 fing er unten auf der angefangenen Seite an (KW 42 Eichstätt: Punkt 3).
+        doc.pageBreakBefore(abschnittStart);
       }
     }
+    // Kopf-/Fußzeile ab Seite 2: welcher Bericht, welche Seite.
+    doc.kopfFuss({ kopf: ['Wochenbericht ' + kwText(current.kw), h.filiale].filter(Boolean).join(' · ') });
     return { blob: await doc.toBlob(), o };
   }
 
