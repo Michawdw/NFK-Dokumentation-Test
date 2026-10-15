@@ -992,6 +992,7 @@ const Wochenbericht = (() => {
     const sel = $('#wbKw');
     if (sel) sel.onchange = () => oeffne(sel.value);
     const gp = $('#wbGespraech');
+    if (gp) Namen.anbinden(gp);           // Technikerliste + eigene Namen
     if (gp) gp.oninput = () => {
       current.gespraechspartner = gp.value;
       const kopf = $('#wbKopf');

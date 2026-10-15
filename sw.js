@@ -1,6 +1,6 @@
 /* Service Worker – Precache der App-Shell für vollständigen Offline-Betrieb.
    Cache-Version bei jeder Änderung der Asset-Liste erhöhen. */
-const CACHE = 'nfk-doku-v63';
+const CACHE = 'nfk-doku-v64';
 
 const ASSETS = [
   './',
@@ -21,11 +21,13 @@ const ASSETS = [
   './js/behinderung.js',
   './js/vorpruefung.js',
   './js/wochenbericht.js',
+  './js/namen.js',
   './lib/jszip.min.js',
   './lib/exceljs.min.js',
   './manifest.webmanifest',
   './assets/vorlage_bautagebuch.xlsx',
   './assets/templates.xlsx',
+  './assets/technikerliste.xlsx',
   './assets/icon-192.png',
   './assets/icon-512.png',
   './assets/logo.png'
@@ -81,21 +83,24 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Vorlagen-Sammlung: network-first, damit neu hochgeladene Tabs sofort erscheinen;
-  // offline Fallback auf die zwischengespeicherte Datei.
-  if (req.url.indexOf('assets/templates.xlsx') !== -1) {
+  // Vorlagen-Sammlung und Technikerliste: network-first, damit eine neu hochgeladene Datei
+  // ohne App-Update ankommt; offline Fallback auf die zwischengespeicherte Datei.
+  const netzZuerst = ['assets/templates.xlsx', 'assets/technikerliste.xlsx']
+    .find((pfad) => req.url.indexOf(pfad) !== -1);
+  if (netzZuerst) {
+    const schluessel = './' + netzZuerst;
     event.respondWith(
       fetch(req.url, { cache: 'reload' })
         .then((res) => {
           if (res && res.status === 200) {
             const copy = res.clone();
             // waitUntil: ohne das kann der Service Worker beendet werden, bevor der
-            // Cache-Eintrag geschrieben ist – die Vorlage fehlte dann offline.
-            event.waitUntil(caches.open(CACHE).then((c) => c.put('./assets/templates.xlsx', copy)));
+            // Cache-Eintrag geschrieben ist – die Datei fehlte dann offline.
+            event.waitUntil(caches.open(CACHE).then((c) => c.put(schluessel, copy)));
           }
           return res;
         })
-        .catch(() => caches.match('./assets/templates.xlsx'))
+        .catch(() => caches.match(schluessel))
     );
     return;
   }

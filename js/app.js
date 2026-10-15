@@ -1454,6 +1454,11 @@ const App = (() => {
         ${timeFieldHtml('dr-pause', 'Pause', r.pause)}
       </div>
       <textarea class="dr-bem" rows="1" placeholder="Bemerkung">${escHtml(r.bemerkung || '')}</textarea>`;
+    // Namensauswahl aus der Technikerliste; wer am selben Tag schon eingetragen ist, fehlt dort.
+    for (const feld of div.querySelectorAll('.dr-name, .dr-name2')) {
+      Namen.anbinden(feld, { ausblenden: () => $$('#diaryRows .dr-name, #diaryRows .dr-name2')
+        .filter((x) => x !== feld).map((x) => x.value) });
+    }
     return div;
   }
 
@@ -1775,7 +1780,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v63'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v64'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
