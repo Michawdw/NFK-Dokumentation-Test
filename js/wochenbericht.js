@@ -565,6 +565,11 @@ const Wochenbericht = (() => {
       const head = document.querySelector(`.wb-sec[data-sid="${s.id}"]`);
       if (!head) continue;
       const ok = st.fertig >= st.gesamt;
+      // Haken-Effekt nur, wenn der Abschnitt gerade eben vollständig geworden ist.
+      const key = current.kw + ':' + s.id;
+      if (ok && secStand.get(key) === false) App.pop(head.querySelector('.wb-sec-check'));
+      secStand.set(key, ok);
+      head.style.setProperty('--p', st.gesamt ? (st.fertig / st.gesamt).toFixed(3) : 0);
       head.classList.toggle('done', ok);
       head.classList.toggle('missing', pruefModus && !ok);
       head.querySelector('.wb-sec-stat').textContent = st.fertig + '/' + st.gesamt;
@@ -589,6 +594,9 @@ const Wochenbericht = (() => {
   // Ansicht nach oben. Zusätzlich bleibt das angetippte Element (Anker) auf derselben Höhe
   // am Bildschirm, auch wenn sich darüber etwas verändert (z. B. ein Textfeld klappt auf).
   let renderGen = 0;
+  let secStand = new Map();     // Abschnitt vollständig? (für den Haken-Effekt)
+  let aufgeklappt = null;       // gerade geöffneter Abschnitt – wird weich aufgezogen
+  let klappt = false;           // Sperre gegen Doppel-Tippen während des Zuklappens
   function ankerVon(el) {
     const k = el && el.closest && el.closest('.wb-item, .wb-sec');
     if (!k) return null;
@@ -623,14 +631,28 @@ const Wochenbericht = (() => {
       head.type = 'button';
       head.className = 'wb-sec' + (offen.has(s.id) ? ' open' : '');
       head.dataset.sid = s.id;
-      head.innerHTML = `<span class="chev">${offen.has(s.id) ? '▼' : '▶'}</span>
+      head.innerHTML = `<span class="chev">▶</span>
         <span class="wb-sec-name">${i + 1}. ${escHtml(s.titel)}</span>
         <span class="grp-check wb-sec-check" hidden>✓</span>
         <span class="grp-stat wb-sec-stat"></span>`;
-      head.onclick = () => {
-        // Immer nur ein Abschnitt offen: Öffnen schließt den bisherigen.
-        offen = offen.has(s.id) ? new Set() : new Set([s.id]);
-        render(`.wb-sec[data-sid="${s.id}"]`);
+      head.onclick = async () => {
+        if (klappt) return;
+        klappt = true;
+        try {
+          // Immer nur ein Abschnitt offen: Öffnen schließt den bisherigen – sichtbar zuklappen.
+          const altKopf = cont.querySelector('.wb-sec.open');
+          const altBody = altKopf && altKopf.nextElementSibling;
+          if (altBody && altBody.classList.contains('wb-sec-body')) {
+            altKopf.classList.add('zu');
+            await App.animClose(altBody);
+          }
+          const auf = !offen.has(s.id);
+          offen = auf ? new Set([s.id]) : new Set();
+          if (auf) aufgeklappt = s.id;
+          await render(`.wb-sec[data-sid="${s.id}"]`);
+        } finally {
+          klappt = false;
+        }
       };
       frag.appendChild(head);
       if (!offen.has(s.id)) continue;
@@ -648,6 +670,13 @@ const Wochenbericht = (() => {
     if (altTop != null) {
       const neu = document.querySelector(sel0);
       if (neu) window.scrollBy(0, neu.getBoundingClientRect().top - altTop);
+    }
+    if (aufgeklappt) {
+      const kopf = cont.querySelector(`.wb-sec[data-sid="${aufgeklappt}"]`);
+      aufgeklappt = null;
+      const body = kopf && kopf.nextElementSibling;
+      if (body && body.classList.contains('wb-sec-body')) App.animOpen(body);
+      App.dreheChev(kopf);
     }
   }
 
@@ -1018,11 +1047,11 @@ const Wochenbericht = (() => {
       scheduleSave(); aktualisiere();
     };
     const ex = $('#wbExportBtn');
-    if (ex) ex.onclick = exportieren;
+    if (ex) ex.onclick = App.busy(exportieren);
   }
 
   // Auftrag gewechselt: den geöffneten Bericht vergessen, damit er nicht im neuen landet.
-  function reset() { current = null; fotoZahl = new Map(); pruefModus = false; }
+  function reset() { current = null; fotoZahl = new Map(); pruefModus = false; secStand = new Map(); }
 
   return { init, enter, flush, reset, ABSCHNITTE, isoWoche, kwKey };
 })();

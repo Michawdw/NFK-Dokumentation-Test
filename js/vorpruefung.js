@@ -336,7 +336,7 @@ const Vorpruefung = (() => {
     const completeBtn = $('#vpCompleteBtn');
     const protoBtn = $('#vpProtokollBtn');
     if (completeBtn) completeBtn.onclick = complete;
-    if (protoBtn) protoBtn.onclick = makeProtokoll;
+    if (protoBtn) protoBtn.onclick = App.busy(makeProtokoll);
   }
 
   return { POINTS, init, enter, isIncomplete, entfaellt, answeredCount, flagMissing, flush };

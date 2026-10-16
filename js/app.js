@@ -23,7 +23,9 @@ const App = (() => {
   };
 
   let aktiveView = 'view-start';
-  function _switchView(viewId) {
+  // zurueck: kommt vom Zurück-Pfeil/Android-Zurück – die Ansicht gleitet dann von links herein.
+  function _switchView(viewId, zurueck) {
+    const vorher = aktiveView;
     // Offene Eingaben beim Verlassen sichern (Zurück-Pfeil, Android-Zurück, Funktionswechsel).
     if (aktiveView === 'view-bautagebuch' && viewId !== 'view-bautagebuch') flushDiary();
     if (aktiveView === 'view-vorpruefung' && viewId !== 'view-vorpruefung') Vorpruefung.flush();
@@ -35,6 +37,7 @@ const App = (() => {
     }
     aktiveView = viewId;
     $$('.view').forEach((v) => v.classList.toggle('active', v.id === viewId));
+    if (vorher !== viewId) animiereView($('#' + viewId), zurueck || viewId === 'view-start');
     $('#topTitle').textContent = viewTitles[viewId] || 'NFK Doku';
     $('#backBtn').hidden = (viewId === 'view-start');
     window.scrollTo(0, 0);
@@ -44,6 +47,17 @@ const App = (() => {
     if (viewId === 'view-bautagebuch') initDiaryView();
     if (viewId === 'view-behinderung') Behinderung.enter();
     if (viewId === 'view-wochenbericht') Wochenbericht.enter();
+  }
+
+  function animiereView(view, zurueck) {
+    if (!view || reduceMotion.matches) return;
+    view.classList.remove('enter-fwd', 'enter-back', 'view-start-anim');
+    void view.offsetWidth;            // Animation auch bei schnellem Hin und Her neu starten
+    view.classList.add(zurueck ? 'enter-back' : 'enter-fwd');
+    // Startseite: Funktionskacheln nacheinander einblenden.
+    if (view.id === 'view-start') view.classList.add('view-start-anim');
+    clearTimeout(view._animEnde);
+    view._animEnde = setTimeout(() => view.classList.remove('enter-fwd', 'enter-back', 'view-start-anim'), 700);
   }
 
   // Zugang zu Bilddoku/Bautagebuch erst, wenn die Vorprüfung des Auftrags vollständig
@@ -75,13 +89,127 @@ const App = (() => {
     _switchView(viewId);
   }
 
+  // ------------------------------------------------------------------ Bewegung
+  // Dezente Animationen (siehe „Bewegung & Tiefe" in styles.css). Wer am Handy
+  // „Bewegung reduzieren" eingestellt hat, bekommt alles sofort und ohne Animation.
+  const reduceMotion = window.matchMedia
+    ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+  const DUR = 220, DUR_FAST = 150;
+  const EASE = 'cubic-bezier(.2,.7,.2,1)';
+  const ohneAnimation = (el) => !el || reduceMotion.matches || typeof el.animate !== 'function';
+  // Lange Inhalte (Ordner mit vielen Bildern) werden nur über den sichtbaren Teil animiert:
+  // Was unterhalb des Bildschirmrands liegt, sieht ohnehin niemand – so bleibt die
+  // Animation auch auf alten Handys kurz und ruckelfrei, egal wie lang der Ordner ist.
+  function sichtbareHoehe(el, h) {
+    const rest = window.innerHeight - el.getBoundingClientRect().top + 40;
+    return Math.min(h, Math.max(120, rest));
+  }
+
+  // Aufklappen: Höhe 0 → natürliche Höhe. Das Element steht bereits fertig im DOM.
+  function animOpen(el) {
+    if (ohneAnimation(el)) return;
+    const h = el.offsetHeight;
+    if (!h) return;
+    const ziel = sichtbareHoehe(el, h);
+    const cs = getComputedStyle(el);
+    el.style.overflow = 'hidden';
+    const a = el.animate([
+      { height: '0px', paddingTop: '0px', paddingBottom: '0px', opacity: 0 },
+      { height: ziel + 'px', paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom, opacity: 1 },
+    ], { duration: DUR, easing: EASE });
+    beiEnde(a, DUR, () => { el.style.overflow = ''; });
+  }
+
+  // Ruft fertig() genau einmal auf, wenn die Animation endet. Läuft die Seite gerade ohne
+  // Bildaufbau (App im Hintergrund), bleibt eine Animation stehen und meldet ihr Ende nie –
+  // der Ordner bliebe zusammengeklappt. Deshalb spätestens kurz danach von selbst.
+  function beiEnde(a, dauer, fertig) {
+    let erledigt = false;
+    const ende = () => { if (!erledigt) { erledigt = true; fertig(); } };
+    a.onfinish = a.oncancel = ende;
+    setTimeout(() => {
+      // Nur eine noch laufende Animation beenden – eine abgebrochene würde finish() sonst
+      // wieder auf ihren Endzustand setzen (Höhe 0) und dort festhalten.
+      if (a.playState === 'running') { try { a.finish(); } catch (e) { /* egal */ } }
+      ende();
+    }, dauer + 200);
+  }
+
+  // Zuklappen: Promise, das nach der Animation auflöst – erst danach wird neu gezeichnet.
+  function animClose(el) {
+    return new Promise((resolve) => {
+      if (ohneAnimation(el) || !el.isConnected) { resolve(); return; }
+      if (el.getAnimations) el.getAnimations().forEach((x) => x.finish());   // Aufklappen noch im Gange
+      const h = el.offsetHeight;
+      if (!h) { resolve(); return; }
+      const start = sichtbareHoehe(el, h);
+      const cs = getComputedStyle(el);
+      el.style.overflow = 'hidden';
+      const a = el.animate([
+        { height: start + 'px', paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom, opacity: 1 },
+        { height: '0px', paddingTop: '0px', paddingBottom: '0px', opacity: 0 },
+      ], { duration: DUR_FAST + 30, easing: 'ease-in', fill: 'forwards' });
+      beiEnde(a, DUR_FAST + 30, resolve);
+    });
+  }
+
+  // Overlays (Dialog, Bild-Großansicht): Öffnen spielt die CSS-Animation automatisch ab,
+  // Schließen blendet erst aus und setzt dann hidden. Öffnet währenddessen schon der
+  // nächste Dialog (Rückfrage direkt nach der vorigen), wird das Ausblenden abgebrochen.
+  function openOverlay(o) {
+    clearTimeout(o._schliessen);
+    o.classList.remove('closing');
+    o.hidden = false;
+  }
+  function closeOverlay(o, danach) {
+    clearTimeout(o._schliessen);
+    if (o.hidden || reduceMotion.matches) {
+      o.classList.remove('closing');
+      o.hidden = true;
+      if (danach) danach();
+      return;
+    }
+    o.classList.add('closing');
+    o._schliessen = setTimeout(() => {
+      o.classList.remove('closing');
+      o.hidden = true;
+      if (danach) danach();
+    }, DUR_FAST);
+  }
+
+  // Lade-Anzeige für Knöpfe mit längerer Arbeit (Export): Kringel am Knopf, gegen
+  // Doppel-Tippen gesperrt. Bewusst ohne disabled – das setzen manche Module selbst
+  // (z. B. Protokoll erst nach „abschließen"), und das darf hier nicht überschrieben werden.
+  function busy(fn) {
+    return async function (e) {
+      const btn = e && e.currentTarget;
+      if (btn && btn.classList.contains('is-busy')) return;
+      if (btn && btn.classList) btn.classList.add('is-busy');
+      try { return await fn.apply(this, arguments); }
+      finally { if (btn && btn.classList) btn.classList.remove('is-busy'); }
+    };
+  }
+
+  // „✓ erledigt"-Haken kurz aufspringen lassen.
+  function pop(el) {
+    if (!el || reduceMotion.matches) return;
+    el.classList.remove('pop');
+    void el.offsetWidth;            // Animation neu starten
+    el.classList.add('pop');
+  }
+
   // ------------------------------------------------------------------- Helpers
   function toast(msg, ms = 2600) {
     const t = $('#toast');
     t.textContent = msg;
+    t.classList.remove('closing');
     t.hidden = false;
     clearTimeout(t._timer);
-    t._timer = setTimeout(() => { t.hidden = true; }, ms);
+    t._timer = setTimeout(() => {
+      if (reduceMotion.matches) { t.hidden = true; return; }
+      t.classList.add('closing');
+      t._timer = setTimeout(() => { t.hidden = true; t.classList.remove('closing'); }, DUR_FAST);
+    }, ms);
   }
   // Eine laufende Meldung („Führe Bilder zusammen…") darf nicht über einer Rückfrage stehen –
   // sie verdeckte unten die Knöpfe und klang, als liefe der Import schon. Rückfrage-Dialoge
@@ -90,6 +218,7 @@ const App = (() => {
     const t = $('#toast');
     if (!t) return;
     clearTimeout(t._timer);
+    t.classList.remove('closing');
     t.hidden = true;
   }
 
@@ -99,8 +228,8 @@ const App = (() => {
     $('#modalCancel').hidden = true;
     $('#modalOk').textContent = 'Schließen';
     const overlay = $('#modalOverlay');
-    overlay.hidden = false;
-    const close = () => { overlay.hidden = true; };
+    openOverlay(overlay);
+    const close = () => { closeOverlay(overlay); };
     $('#modalOk').onclick = close;
     $('#modalClose').onclick = close;   // ✕ oben in der klebenden Kopfzeile
     $('#modalBody').scrollTop = 0;
@@ -124,14 +253,14 @@ const App = (() => {
     $('#modalCancel').hidden = false;
     $('#modalOk').textContent = 'OK';
     const overlay = $('#modalOverlay');
-    overlay.hidden = false;
-    $('#modalCancel').onclick = () => { overlay.hidden = true; };
-    $('#modalClose').onclick = () => { overlay.hidden = true; }; // ✕ = Abbrechen
+    openOverlay(overlay);
+    $('#modalCancel').onclick = () => { closeOverlay(overlay); };
+    $('#modalClose').onclick = () => { closeOverlay(overlay); }; // ✕ = Abbrechen
     $('#modalOk').onclick = () => {
       const data = {};
       $$('#modalBody [name]').forEach((el) => { data[el.name] = el.value.trim(); });
       const ok = onSubmit(data);
-      if (ok !== false) overlay.hidden = true;
+      if (ok !== false) closeOverlay(overlay);
     };
   }
 
@@ -146,9 +275,9 @@ const App = (() => {
       cancel.textContent = cancelLabel || 'Abbrechen';
       ok.textContent = okLabel || 'OK';
       ok.classList.toggle('danger', !!danger);
-      overlay.hidden = false;
+      openOverlay(overlay);
       const finish = (val) => {
-        overlay.hidden = true;
+        closeOverlay(overlay);
         ok.classList.remove('danger');
         ok.textContent = 'OK';
         cancel.textContent = 'Abbrechen';
@@ -183,9 +312,9 @@ const App = (() => {
       cancel.hidden = false;
       cancel.textContent = (labels && labels.cancel) || 'Abbrechen';
       ok.textContent = (labels && labels.ok) || 'OK';
-      overlay.hidden = false;
+      openOverlay(overlay);
       const finish = (val) => {
-        overlay.hidden = true;
+        closeOverlay(overlay);
         cancel.textContent = 'Abbrechen';
         ok.textContent = 'OK';
         overlay.onclick = null;
@@ -221,9 +350,9 @@ const App = (() => {
       ok.hidden = true;             // hier entscheiden die Knöpfe im Inhalt
       cancel.hidden = false;
       cancel.textContent = 'Abbrechen';
-      overlay.hidden = false;
+      openOverlay(overlay);
       const finish = (key) => {
-        overlay.hidden = true;
+        closeOverlay(overlay);
         ok.hidden = false;          // für alle anderen Dialoge zurückstellen
         overlay.onclick = null;
         resolve(key);
@@ -370,12 +499,27 @@ const App = (() => {
     const liste = document.createElement('div');
     liste.className = 'job-more-list';
     weitere.forEach((j) => liste.appendChild(jobItem(j, false)));
+    knopf.innerHTML = `<span class="chev">▶</span>Weitere Aufträge (${weitere.length})`;
     const zeige = () => {
       liste.hidden = !weitereOffen;
+      knopf.classList.toggle('open', weitereOffen);
       knopf.setAttribute('aria-expanded', String(weitereOffen));
-      knopf.textContent = (weitereOffen ? '▾' : '▸') + ` Weitere Aufträge (${weitere.length})`;
     };
-    knopf.onclick = () => { weitereOffen = !weitereOffen; zeige(); };
+    knopf.onclick = async () => {
+      if (knopf._klappt) return;
+      weitereOffen = !weitereOffen;
+      if (weitereOffen) { zeige(); animOpen(liste); return; }
+      knopf._klappt = true;
+      knopf.classList.remove('open');      // Pfeil dreht schon beim Zuklappen zurück
+      await animClose(liste);
+      knopf._klappt = false;
+      // Erst die (stehengebliebene) Zuklapp-Animation lösen, DANN ausblenden: an einem
+      // ausgeblendeten Element meldet der Browser sie nicht mehr, sie bliebe hängen und die
+      // Liste stünde beim nächsten Öffnen mit Höhe 0 da.
+      if (liste.getAnimations) liste.getAnimations().forEach((a) => a.cancel());
+      liste.style.overflow = '';
+      zeige();
+    };
     zeige();
     cont.appendChild(knopf);
     cont.appendChild(liste);
@@ -570,7 +714,7 @@ const App = (() => {
     el.innerHTML = `<span class="bk-msg"></span>` +
       `<button type="button" class="btn primary bk-save">💾 Jetzt sichern</button>`;
     el.querySelector('.bk-msg').textContent = msg;
-    el.querySelector('.bk-save').onclick = doBackupNow;
+    el.querySelector('.bk-save').onclick = busy(doBackupNow);
   }
 
   // Erzeugt den vollen Bilddoku-ZIP (= komplette Sicherung) und merkt den Zeitpunkt.
@@ -927,13 +1071,44 @@ const App = (() => {
   // anker = { ober } | { unter }: diese Kopfzeile bleibt auf derselben Bildschirmhöhe, auch
   // wenn darüber ein langer Ordner zuklappt.
   let treeGen = 0;
+  // Animation: zuletzt aufgeklappter Ordner (wird nach dem Neuaufbau weich aufgezogen),
+  // Sperre gegen Doppel-Tippen während des Zuklappens und der Erledigt-Stand des letzten
+  // Aufbaus – nur was seitdem NEU erledigt ist, bekommt den kurzen Haken-Effekt.
+  let treeAufgeklappt = null;
+  let treeKlappt = false;
+  let treeStand = new Map();
   function treeKopf(anker) {
     if (!anker) return null;
     if (anker.unter != null) return $$('#structureTree .tree-unter').find((e) => e.dataset.unter === anker.unter) || null;
     return $$('#structureTree .tree-ober').find((e) => e.dataset.ober === anker.ober) || null;
   }
+  // Klick auf eine Ordner-Kopfzeile: den offenen Ordner dieser Ebene erst sichtbar zuklappen,
+  // dann den neuen Zustand zeichnen. sel = Kopfzeilen-Klasse der Ebene.
+  async function treeUmschalten(sel, umschalten, anker) {
+    if (treeKlappt) return;
+    treeKlappt = true;
+    try {
+      const kopf = $(`#structureTree ${sel}.open`);
+      const body = kopf && kopf.nextElementSibling;
+      if (body && body.classList.contains('tree-body')) {
+        kopf.classList.add('zu');            // Pfeil dreht schon mit zurück
+        await animClose(body);
+      }
+      if (umschalten()) treeAufgeklappt = anker;
+      await renderTree(anker);
+    } finally {
+      treeKlappt = false;
+    }
+  }
+
   async function renderTree(anker) {
     const gen = ++treeGen;
+    const stand = new Map();               // Erledigt-Stand dieses Aufbaus (für den Haken-Effekt)
+    const popEls = [];
+    const merke = (key, done, el) => {
+      stand.set(key, done);
+      if (done && el && treeStand.get(key) === false) popEls.push(el);
+    };
     const info = $('#templateInfo');
     const tree = $('#structureTree');
     const urls = [];                       // Vorschaubilder dieses Laufs
@@ -975,7 +1150,8 @@ const App = (() => {
       head.className = 'tree-ober' + (oberExpanded ? ' open' : '')
         + (oberAllDone ? ' alldone' : '') + (oberNotNeeded ? ' skipped' : '')
         + (oberOrigin ? ' origin-' + oberOrigin.cls : '');
-      head.innerHTML = `<span class="chev">${oberExpanded ? '▼' : '▶'}</span>
+      if (!oberNotNeeded) head.style.setProperty('--p', needed.length ? (oberDone / needed.length).toFixed(3) : 0);
+      head.innerHTML = `<span class="chev">▶</span>
         <span class="grp-name">${escHtml(ober)}${oberOrigin ? ` <span class="origin-tag ${oberOrigin.cls}" title="${escAttr(oberOrigin.title)}">${escHtml(oberOrigin.short)}</span>` : ''}</span>
         ${oberAllDone ? '<span class="grp-check" title="alle Pflichtbilder erledigt">✓</span>' : ''}
         ${oberNotNeeded
@@ -985,13 +1161,13 @@ const App = (() => {
         ${oberOrigin ? '<button class="del-btn" title="Bereich mit allen Positionen löschen">🗑</button>' : ''}`;
       head.dataset.ober = ober;
       // Immer nur ein Oberordner offen; beim Wechsel sind dessen Unterordner wieder zu.
-      head.onclick = () => {
+      head.onclick = () => treeUmschalten('.tree-ober', () => {
         const warOffen = expandedObers.has(ober);
         expandedObers.clear();
         expandedUnters.clear();
         if (!warOffen) expandedObers.add(ober);
-        renderTree({ ober });
-      };
+        return !warOffen;
+      }, { ober });
       head.querySelector('.skip-btn').onclick = (e) => { e.stopPropagation(); toggleSkip('obers', ober); };
       const oberDel = head.querySelector('.del-btn');
       if (oberDel) oberDel.onclick = (e) => {
@@ -999,6 +1175,7 @@ const App = (() => {
         deleteCustomFolderFlow(allNodes, ober, 'obers', ober);
       };
       frag.appendChild(head);
+      merke('o:' + ober, oberAllDone, head.querySelector('.grp-check'));
 
       if (!oberExpanded) continue; // Inhalt zugeklappter Ordner wird nicht gebaut
 
@@ -1022,7 +1199,8 @@ const App = (() => {
           uHead.className = 'tree-unter' + (uExpanded ? ' open' : '')
             + (uAllDone ? ' alldone' : '') + (uNotNeeded ? ' skipped' : '')
             + (uOrigin ? ' origin-' + uOrigin.cls : '');
-          uHead.innerHTML = `<span class="chev">${uExpanded ? '▼' : '▶'}</span>
+          if (!uNotNeeded) uHead.style.setProperty('--p', uNeeded.length ? (uDone / uNeeded.length).toFixed(3) : 0);
+          uHead.innerHTML = `<span class="chev">▶</span>
             <span class="grp-name">${escHtml(uk)}${uOrigin ? ` <span class="origin-tag ${uOrigin.cls}" title="${escAttr(uOrigin.title)}">${escHtml(uOrigin.short)}</span>` : ''}</span>
             ${uAllDone ? '<span class="grp-check" title="alle Pflichtbilder erledigt">✓</span>' : ''}
             ${uNotNeeded
@@ -1032,12 +1210,12 @@ const App = (() => {
             ${uOrigin ? '<button class="del-btn" title="Unterordner mit allen Positionen löschen">🗑</button>' : ''}`;
           uHead.dataset.unter = uKey;
           // Immer nur ein Unterordner offen.
-          uHead.onclick = () => {
+          uHead.onclick = () => treeUmschalten('.tree-unter', () => {
             const warOffen = expandedUnters.has(uKey);
             expandedUnters.clear();
             if (!warOffen) expandedUnters.add(uKey);
-            renderTree({ unter: uKey });
-          };
+            return !warOffen;
+          }, { unter: uKey });
           uHead.querySelector('.skip-btn').onclick = (e) => { e.stopPropagation(); toggleSkip('unters', uKey); };
           const uDel = uHead.querySelector('.del-btn');
           if (uDel) uDel.onclick = (e) => {
@@ -1045,16 +1223,25 @@ const App = (() => {
             deleteCustomFolderFlow(list, uk, 'unters', uKey);
           };
           body.appendChild(uHead);
+          merke('u:' + uKey, uAllDone, uHead.querySelector('.grp-check'));
 
           if (uExpanded) {
             const uBody = document.createElement('div');
             uBody.className = 'tree-body';
             body.appendChild(uBody);
-            for (const n of list) { const zeile = await nameRow(n, urls); if (veraltet()) return; uBody.appendChild(zeile); }
+            for (const n of list) {
+              const zeile = await nameRow(n, urls); if (veraltet()) return;
+              merke('n:' + n.key, !!n.done, zeile.querySelector('.row-check'));
+              uBody.appendChild(zeile);
+            }
           }
         } else {
           // Positionen direkt im Oberordner (ohne Unterordner)
-          for (const n of list) { const zeile = await nameRow(n, urls); if (veraltet()) return; body.appendChild(zeile); }
+          for (const n of list) {
+            const zeile = await nameRow(n, urls); if (veraltet()) return;
+            merke('n:' + n.key, !!n.done, zeile.querySelector('.row-check'));
+            body.appendChild(zeile);
+          }
         }
       }
     }
@@ -1068,6 +1255,23 @@ const App = (() => {
       const neuKopf = treeKopf(anker);
       if (neuKopf) window.scrollBy(0, neuKopf.getBoundingClientRect().top - altTop);
     }
+    // Zugeklappte Ordner werden nicht gebaut – ihr Stand bleibt aus dem letzten Aufbau stehen.
+    for (const [k, v] of stand) treeStand.set(k, v);
+    popEls.forEach(pop);
+    if (treeAufgeklappt) {
+      const kopf = treeKopf(treeAufgeklappt);
+      treeAufgeklappt = null;
+      const body = kopf && kopf.nextElementSibling;
+      if (body && body.classList.contains('tree-body')) animOpen(body);
+      dreheChev(kopf);
+    }
+  }
+
+  // Neu gezeichnete Kopfzeilen stehen schon „offen" da – den Pfeil trotzdem sichtbar drehen.
+  function dreheChev(kopf) {
+    const chev = kopf && kopf.querySelector('.chev');
+    if (ohneAnimation(chev)) return;
+    chev.animate([{ transform: 'none' }, { transform: 'rotate(90deg)' }], { duration: DUR, easing: EASE });
   }
 
   async function nameRow(n, urls) {
@@ -1131,12 +1335,12 @@ const App = (() => {
     $('#photoSub').textContent = 'Bild ' + String(photo.seq).padStart(2, '0') +
       (node.unter ? ' · ' + node.unter : '') + ' · ' + node.ober;
     $('#photoImg').src = url;
-    overlay.hidden = false;
+    openOverlay(overlay);
 
     const close = () => {
-      overlay.hidden = true;
       overlay.onclick = null;
-      $('#photoImg').removeAttribute('src'); // Object-URL nicht länger als nötig binden
+      // Object-URL nicht länger als nötig binden – aber erst nach dem Ausblenden lösen.
+      closeOverlay(overlay, () => { if (overlay.hidden) $('#photoImg').removeAttribute('src'); });
     };
     $('#photoClose').onclick = close;
     overlay.onclick = (e) => { if (e.target === overlay) close(); }; // daneben tippen = schließen
@@ -1760,7 +1964,7 @@ const App = (() => {
       // Verlaufseinträge stammen evtl. von einem vorher geöffneten Auftrag – ohne gespeicherte
       // Stammdaten führt auch der Verlauf nicht in einen Arbeitsbereich.
       if (ziel !== 'view-start' && fehlendeStammdaten(currentJob).length) ziel = 'view-start';
-      _switchView(ziel);
+      _switchView(ziel, true);
     });
     // Android friert die App beim Wegwischen ein oder beendet sie – vorher noch sichern.
     const alleSichern = () => { flushDiary(); Vorpruefung.flush(); Wochenbericht.flush(); };
@@ -1790,8 +1994,8 @@ const App = (() => {
     $('#overviewBtn').onclick = () => Overview.show();
     // ZIP-Export = vollständige Sicherung: über doBackupNow, damit der Zeitpunkt
     // gemerkt und die Backup-Erinnerung aktualisiert wird.
-    $('#exportZipBtn').onclick = doBackupNow;
-    $('#handoverExportBtn').onclick = handoverExport;
+    $('#exportZipBtn').onclick = busy(doBackupNow);
+    $('#handoverExportBtn').onclick = busy(handoverExport);
     // Beide Knöpfe nehmen beides an (.xlsx wie .zip) – importAnyFile entscheidet.
     $('#handoverImport').addEventListener('change', importAnyFile);
     $('#mergeImport').addEventListener('change', importAnyFile);
@@ -1800,9 +2004,14 @@ const App = (() => {
     // die Übergabe des Kollegen heran.
     $('#startImport').addEventListener('change', importAnyFile);
     $('#diarySaveBtn').onclick = saveDiary;
-    $('#diaryExportBtn').onclick = exportDiary;
+    $('#diaryExportBtn').onclick = busy(exportDiary);
+    // Schatten unter der Kopfleiste, sobald darunter gescrollt wird.
+    const topbar = $('.topbar');
+    const schatten = () => topbar.classList.toggle('scrolled', window.scrollY > 4);
+    window.addEventListener('scroll', schatten, { passive: true });
+    schatten();
     $('#modalOverlay').addEventListener('click', (e) => {
-      if (e.target.id === 'modalOverlay') e.currentTarget.hidden = true;
+      if (e.target.id === 'modalOverlay') closeOverlay(e.currentTarget);
     });
   }
 
@@ -1813,7 +2022,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v68'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v72'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
@@ -1908,6 +2117,7 @@ const App = (() => {
     currentNode = null;
     expandedObers.clear();
     expandedUnters.clear();
+    treeStand = new Map();
     Wochenbericht.reset(); // geöffneten Wochenbericht nicht in den neuen Auftrag tragen
     weitereOffen = false;  // Klappfeld „Weitere Aufträge" nach dem Wechsel wieder zu
   }
@@ -2136,5 +2346,5 @@ const App = (() => {
   document.addEventListener('DOMContentLoaded', init);
 
   // Öffentlich für andere Module:
-  return { toast, openInfoModal, openFormModal, openConfirm, shareFile, show, getCurrentJob, saveCurrentJob, adoptJob, filialNr, fehlerText };
+  return { busy, animOpen, animClose, dreheChev, pop, toast, openInfoModal, openFormModal, openConfirm, shareFile, show, getCurrentJob, saveCurrentJob, adoptJob, filialNr, fehlerText };
 })();

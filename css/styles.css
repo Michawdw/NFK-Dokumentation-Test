@@ -11,6 +11,13 @@
   --ok: #1f8a4c;
   --warn: #c0392b;
   --tap: 52px;
+  /* Bewegung: dezent und kurz – alte Handys sollen nicht ruckeln. */
+  --dur-fast: 150ms;
+  --dur: 220ms;
+  --ease: cubic-bezier(.2, .7, .2, 1);
+  /* Tiefe: Karten heben sich leicht vom Hintergrund ab. */
+  --shadow-1: 0 1px 2px rgba(16, 32, 52, .06), 0 1px 3px rgba(16, 32, 52, .05);
+  --shadow-2: 0 2px 8px rgba(16, 32, 52, .18);
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -39,7 +46,9 @@ html, body {
   background: var(--brand);
   color: #fff;
   padding: calc(env(safe-area-inset-top) + 10px) 14px 10px;
+  transition: box-shadow var(--dur) var(--ease);
 }
+.topbar.scrolled { box-shadow: var(--shadow-2); }
 .topbar h1 { font-size: 19px; margin: 0; flex: 1; }
 .icon-btn {
   background: rgba(255,255,255,.15);
@@ -110,7 +119,8 @@ fieldset.techs legend { font-weight: 700; padding: 0 6px; }
 .btn.danger { background: var(--warn); border-color: var(--warn); color: #fff; }
 .btn.ghost { background: #fff; }
 .btn.wide { width: 100%; margin-top: 14px; }
-.btn:active { transform: translatey(1px); }
+.btn { transition: transform var(--dur-fast) var(--ease), background-color var(--dur-fast), border-color var(--dur-fast), opacity var(--dur-fast); }
+.btn:active { transform: scale(.97); }
 .filelabel { cursor: pointer; }
 .toolrow { display: flex; flex-wrap: wrap; gap: 10px; margin: 6px 0 12px; }
 .toolrow .btn { flex: 1 1 auto; }
@@ -626,3 +636,191 @@ textarea.wb-notiztext { min-height: 66px; }
 @media (min-width: 560px) {
   .bigchoice { grid-template-columns: 1fr 1fr; }
 }
+
+/* =====================================================================
+   Bewegung & Tiefe (v69)
+   Dezent (150–220 ms), nur transform/opacity – Ausnahme ist die Höhe beim
+   Auf-/Zuklappen, die per Web Animations API in app.js (App.animOpen/animClose)
+   läuft. Wer am Handy „Bewegung reduzieren" eingestellt hat, sieht keine Animation.
+   ===================================================================== */
+
+/* ---------- Schatten ---------- */
+.job-item, .bigbtn, .name-row, .tree-ober, .vp-item, .wb-item, .wb-kopf,
+.diary-arch-item, .backup-banner, .diary-row, .bh-addr {
+  box-shadow: var(--shadow-1);
+}
+.name-row.skipped, .tree-ober.skipped, .tree-unter.skipped { box-shadow: none; }
+
+/* ---------- Tipp-Rückmeldung ---------- */
+.bigbtn, .job-item, .tree-ober, .tree-unter, .wb-sec, .vp-opt, .job-more, .diary-arch-item,
+.cam-btn, .gal-btn, .skip-btn, .del-btn, .icon-btn {
+  transition: transform var(--dur-fast) var(--ease), background-color var(--dur-fast),
+    border-color var(--dur-fast), box-shadow var(--dur-fast);
+}
+.bigbtn:active, .job-item:active, .tree-ober:active, .tree-unter:active, .wb-sec:active,
+.job-more:active, .diary-arch-item:active { transform: scale(.985); }
+.vp-seg .vp-opt:active, .cam-btn:active, .gal-btn:active, .skip-btn:active,
+.del-btn:active, .icon-btn:active { transform: scale(.94); }
+/* Kein Schrumpfen der Kopfzeile, wenn eigentlich ein Knopf darin gedrückt wird. */
+.tree-ober:has(button:active), .tree-unter:has(button:active) { transform: none; }
+
+/* ---------- Pfeile drehen statt Zeichen tauschen ---------- */
+.tree-ober .chev, .tree-unter .chev, .wb-sec .chev, .job-more .chev {
+  display: inline-block; text-align: center;
+  transition: transform var(--dur) var(--ease);
+}
+.tree-ober.open .chev, .tree-unter.open .chev, .wb-sec.open .chev, .job-more.open .chev {
+  transform: rotate(90deg);
+}
+.job-more .chev { width: 14px; font-size: 12px; margin-right: 4px; }
+
+/* ---------- Fortschrittsbalken in Ordner-Köpfen ---------- */
+.tree-ober, .tree-unter, .wb-sec { position: relative; overflow: hidden; }
+.tree-ober[style*="--p"]::after, .tree-unter[style*="--p"]::after, .wb-sec[style*="--p"]::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
+  background: var(--brand-light); transform-origin: left center;
+  transform: scaleX(var(--p, 0));
+  transition: transform 400ms var(--ease), background-color var(--dur);
+}
+.tree-ober.alldone::after, .tree-unter.alldone::after, .wb-sec.done::after { background: var(--ok); }
+.tree-ober.skipped::after, .tree-unter.skipped::after { display: none; }
+
+/* ---------- Ansichtswechsel ---------- */
+.view.enter-fwd { animation: view-in-fwd var(--dur) var(--ease); }
+.view.enter-back { animation: view-in-back var(--dur) var(--ease); }
+@keyframes view-in-fwd { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+@keyframes view-in-back { from { opacity: 0; transform: translateX(-18px); } to { opacity: 1; transform: none; } }
+
+/* ---------- Startseite: Kacheln ---------- */
+.bigbtn { flex-direction: row; align-items: center; gap: 14px; }
+.bigbtn-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bigbtn-emoji {
+  flex: 0 0 auto; width: 56px; height: 56px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 28px; line-height: 1; background: #eaf2fb;
+}
+.bigbtn[data-go="view-bilddoku"] .bigbtn-emoji { background: #e3effa; }
+.bigbtn[data-go="view-bautagebuch"] .bigbtn-emoji { background: #e7f5ec; }
+.bigbtn[data-go="view-behinderung"] .bigbtn-emoji { background: #fdecea; }
+.bigbtn[data-go="view-wochenbericht"] .bigbtn-emoji { background: #fff4e5; }
+/* Auswahl-Dialoge (openAuswahl) haben keinen Textblock – dort bleibt das alte Spaltenlayout. */
+.modal .bigbtn { flex-direction: column; align-items: flex-start; gap: 4px; }
+.modal .bigbtn-emoji { width: auto; height: auto; background: none; font-size: 30px; }
+.view-start-anim .bigchoice .bigbtn {
+  animation: kachel-in 260ms var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+@keyframes kachel-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* ---------- Dialoge ---------- */
+.modal-overlay:not([hidden]) { animation: fade-in var(--dur) var(--ease); }
+.modal-overlay:not([hidden]) .modal { animation: sheet-up 260ms var(--ease); }
+.photo-overlay:not([hidden]) { animation: fade-in var(--dur) var(--ease); }
+.photo-overlay:not([hidden]) .photo-box { animation: zoom-in var(--dur) var(--ease); }
+.modal-overlay.closing, .photo-overlay.closing {
+  animation: fade-out var(--dur-fast) ease-in forwards; pointer-events: none;
+}
+.modal-overlay.closing .modal { animation: sheet-down var(--dur-fast) ease-in forwards; }
+.photo-overlay.closing .photo-box { animation: zoom-out var(--dur-fast) ease-in forwards; }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes sheet-up { from { transform: translateY(40px); opacity: .6; } to { transform: none; opacity: 1; } }
+@keyframes sheet-down { from { transform: none; } to { transform: translateY(40px); } }
+@keyframes zoom-in { from { transform: scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes zoom-out { from { transform: none; opacity: 1; } to { transform: scale(.96); opacity: 0; } }
+
+/* ---------- Toast & „gespeichert" ---------- */
+.toast:not([hidden]) { animation: toast-in var(--dur) var(--ease); box-shadow: var(--shadow-2); }
+.toast.closing { animation: toast-out var(--dur-fast) ease-in forwards; }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes toast-out { from { opacity: 1; transform: translate(-50%, 0); } to { opacity: 0; transform: translate(-50%, 8px); } }
+.saved:not([hidden]) { display: inline-block; animation: pop 320ms var(--ease); }
+.pop { animation: pop 360ms var(--ease); }
+@keyframes pop { 0% { transform: scale(.6); opacity: 0; } 60% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); } }
+.grp-check, .row-check { display: inline-block; }
+
+/* ---------- Namensliste ---------- */
+.namen-liste:not([hidden]) { animation: fade-in var(--dur-fast) var(--ease); }
+
+/* ---------- Lade-Anzeige an Knöpfen ---------- */
+.btn.is-busy { position: relative; opacity: .85; cursor: progress; pointer-events: none; }
+.btn.is-busy::before {
+  content: ""; flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid currentColor; border-right-color: transparent;
+  animation: spin 700ms linear infinite;
+}
+.btn.is-busy:disabled { opacity: .85; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- Fokus (Tastatur) ---------- */
+:focus-visible { outline: 3px solid rgba(46, 107, 168, .55); outline-offset: 2px; }
+
+/* ---------- Bewegung reduzieren ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important; animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important; transition-duration: 1ms !important;
+  }
+  .btn.is-busy::before { animation: none; }
+}
+/* Während ein Ordner zuklappt (Klasse .zu aus app.js) dreht der Pfeil schon zurück. */
+.tree-ober.open.zu .chev, .tree-unter.open.zu .chev, .wb-sec.open.zu .chev { transform: none; }
+
+/* Kacheln nie breiter als der Bildschirm: Ohne minmax(0,1fr) wuchs die Rasterspalte auf
+   die Breite des längsten Worts („Baubehinderungsanzeige") plus Icon-Kreis – auf schmalen
+   Handys ragten die Kacheln rechts hinaus und die Seite ließ sich seitlich verschieben. */
+.bigchoice { grid-template-columns: minmax(0, 1fr); }
+.bigbtn { min-width: 0; width: 100%; }
+.bigbtn-text { flex: 1 1 auto; }
+.bigbtn-title, .bigbtn-sub { overflow-wrap: break-word; hyphens: auto; -webkit-hyphens: auto; }
+@media (min-width: 560px) {
+  .bigchoice { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 380px) {
+  .bigbtn { padding: 16px; gap: 12px; }
+  .bigbtn-emoji { width: 46px; height: 46px; font-size: 24px; }
+  .bigbtn-title { font-size: 18px; }
+}
+
+/* Zweispaltige Zeilen (Datum | seit, Gewerk | Bestellnummer, …): Bricht eine Beschriftung
+   auf zwei Zeilen um, rutschte nur ihr Feld nach unten – die beiden Felder standen versetzt.
+   Die Zellen werden jetzt unten ausgerichtet: beide Felder einer Zeile liegen immer auf
+   derselben Höhe, die kürzere Beschriftung rückt dafür etwas nach unten. */
+.grid2 { align-items: end; }
+/* Datumsfelder sind von Haus aus ein paar Pixel höher als Textfelder – gleiche
+   Mindesthöhe für alle einzeiligen Felder, damit Feldpaare auch unten bündig sind. */
+.form input:not([type="checkbox"]):not([type="radio"]), .grid2 input { min-height: 48px; }
+/* Textfelder erbten die Schrift nicht und zeigten Schreibmaschinenschrift. */
+textarea, input, select, button { font-family: inherit; }
+
+/* ---------- Geöffnete Ordner als blau getönte Einheit (Bilddoku) ----------
+   Kopf und Inhalt des offenen Ordners sind eingefärbt, damit sofort erkennbar ist, was zu
+   welchem Ordner gehört. Unterordner eine Stufe kräftiger, damit die Ebenen unterscheidbar
+   bleiben. Die Positions-Karten bleiben weiß (offen) bzw. grün (erledigt).
+   Rahmenfarbe bewusst nur oben/rechts/unten: links liegt ggf. der Herkunftsstreifen. */
+:root {
+  --open-1-head: #dbe8f5; --open-1-body: #edf3fa; --open-1-line: #bcd2e8;
+  --open-2-head: #cddff0; --open-2-body: #e1ecf7; --open-2-line: #a9c4e0;
+}
+.tree-ober.open {
+  background: var(--open-1-head);
+  border-top-color: var(--open-1-line); border-right-color: var(--open-1-line); border-bottom-color: var(--open-1-line);
+}
+.tree-ober.open:not([class*="origin-"]) { border-left-color: var(--open-1-line); }
+.tree-ober.open + .tree-body {
+  background: var(--open-1-body); border-color: var(--open-1-line);
+}
+.tree-unter.open {
+  background: var(--open-2-head); border-radius: 10px 10px 0 0;
+  border-top-color: var(--open-2-line); border-right-color: var(--open-2-line); border-bottom-color: var(--open-2-line);
+}
+.tree-unter.open:not([class*="origin-"]) { border-left-color: var(--open-2-line); }
+.tree-unter.open + .tree-body {
+  background: var(--open-2-body); margin-left: 6px; padding: 4px 8px 10px;
+  border: 1px solid var(--open-2-line); border-top: none; border-radius: 0 0 10px 10px;
+}
+/* Zähler-Pillen auf blauem Grund weiß, sonst verschwimmen sie. */
+.tree-ober.open .grp-stat:not(.done):not(.skip), .tree-unter.open .grp-stat:not(.done):not(.skip) { background: #fff; }
+.tree-ober.open .skip-btn, .tree-unter.open .skip-btn { border-color: var(--open-1-line); }
+/* Als „nicht benötigt" markiert: bleibt grau gestrichelt, auch wenn geöffnet. */
+.tree-ober.open.skipped, .tree-unter.open.skipped { background: #f3f4f6; }

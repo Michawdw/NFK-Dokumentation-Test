@@ -588,7 +588,7 @@ const Behinderung = (() => {
     bind('#bhSenderBtn', editAbsender);
     bind('#bhNewBtn', newEntry);
     bind('#bhSaveBtn', () => save(false));
-    bind('#bhExportBtn', exportDoc);
+    bind('#bhExportBtn', App.busy(exportDoc));
     bind('#bhCamBtn', () => cameraInput.click());
     bind('#bhGalBtn', () => galleryInput.click());
     const f = $('#bhForm');
