@@ -120,14 +120,34 @@ const Textkorrektur = (() => {
   function liste(s) {
     s = s.replace(/\s*\+\s*/g, ', ').replace(/^[:\s]+|[,.\s]+$/g, '');
     s = s.replace(/^\((.*)\)$/, '$1');
-    const teile = s.split(/,\s*/).filter(Boolean).map((t) => {
+    let teile = s.split(/,\s*/).filter(Boolean).map((t) => {
       const key = lc(t).replace(/\s+/g, ' ');
       return listenEintraege[key] || t;
     });
-    if (teile.length < 2) return teile.join('');
     // Hat der Techniker selbst schon „sowie"/„und" vor dem letzten Eintrag gesetzt, bleibt es dabei.
-    if (teile.some((t) => /\ssowie\s/iu.test(t)) || /\sund\s/iu.test(teile[teile.length - 1])) return teile.join(', ');
+    const eigenesSowie = teile.length > 1
+      && (teile.some((t) => /\ssowie\s/iu.test(t)) || /(?<!\d)\sund\s(?!\d)/iu.test(teile[teile.length - 1]));
+    if (R.apGruppieren) teile = apGruppe(teile);
+    if (teile.length < 2) return teile.join('');
+    if (eigenesSowie) return teile.join(', ');
     return teile.slice(0, -1).join(', ') + ' sowie ' + teile[teile.length - 1];
+  }
+
+  // „AP 3", „AP 9", „AP 10" in einer Liste -> ein Eintrag „Access Points (AP) 3, 9 und 10"
+  // an der Stelle des ersten AP (Stil der neueren Bautagebücher).
+  const undListe = (n) => (n.length > 1 ? n.slice(0, -1).join(', ') + ' und ' + n[n.length - 1] : String(n[0]));
+  function apGruppe(teile) {
+    const nummern = [];
+    let erste = -1;
+    teile.forEach((t, i) => {
+      const m = t.match(/^AP (\d+)(?: und (\d+))?$/u);
+      if (m) { nummern.push(+m[1]); if (m[2]) nummern.push(+m[2]); if (erste < 0) erste = i; }
+    });
+    if (!nummern.length) return teile;
+    nummern.sort((a, b) => a - b);
+    // Ein einzelner AP bleibt „AP n" – ausgeschrieben wird er nur bei der ersten Nennung im Feld.
+    const gruppe = nummern.length > 1 ? `Access Points (AP) ${undListe(nummern)}` : `AP ${nummern[0]}`;
+    return teile.flatMap((t, i) => (i === erste ? [gruppe] : /^AP \d+(?: und \d+)?$/u.test(t) ? [] : [t]));
   }
   const plusAlsSowie = (s) => (/(?<!\d)\s*\+\s*(?!\d)/u.test(s) ? liste(s) : s);
 
@@ -136,6 +156,20 @@ const Textkorrektur = (() => {
     const o = lc(obj);
     for (const k of genitivKeys) {
       if (o === k || o.startsWith(k + ' ')) return R.genitiv[k] + obj.slice(k.length);
+    }
+    return obj;
+  }
+
+  // Genitiv-Objekt zurück in den Nominativ: „der PZE" -> „PZE", „des Headsetkanals" ->
+  // „Headsetkanal", „aller Steigetrassen" -> „Sämtliche Steigetrassen", „von Brüstungskanal" -> „Brüstungskanal".
+  function nominativ(obj) {
+    if (/^(aller|sämtlicher)\s+/iu.test(obj)) return obj.replace(/^\S+\s+/u, 'Sämtliche ');
+    if (/^(der|von)\s+/iu.test(obj)) return obj.replace(/^\S+\s+/u, '');
+    const m = obj.match(/^des\s+(\S+)(.*)$/iu);
+    if (m) {
+      // Genitiv-Endung „-s"/„-es" entfernen („Headsetkanals", „Kabelweges"); Abkürzungen bleiben
+      const wort = /\p{Ll}{2,}s$/u.test(m[1]) ? m[1].replace(/e?s$/u, '') : m[1];
+      return wort + m[2];
     }
     return obj;
   }
@@ -206,7 +240,11 @@ const Textkorrektur = (() => {
   }
 
   // „Elektriker und PLB" -> „dem Elektriker und dem PLB"
-  const personen = (s) => s.split(/\s+und\s+/iu).map((p) => ab.personen[lc(p.trim())] || p.trim()).join(' und ');
+  // „GU, FlexPos und WdW" -> „dem Generalunternehmer (GU), FlexPos und WdW"
+  const personen = (s) => {
+    const teile = s.split(/\s*,\s*|\s+und\s+/iu).map((p) => ab.personen[lc(p.trim())] || p.trim());
+    return teile.length > 1 ? teile.slice(0, -1).join(', ') + ' und ' + teile[teile.length - 1] : teile[0];
+  };
 
   function vorlageAbstimmung(zeile) {
     if (/\.\s/.test(zeile)) return null; // mehrere Sätze: nicht umbauen
@@ -249,6 +287,12 @@ const Textkorrektur = (() => {
     const st = statusAbtrennen(m[2]);
     // „Baustellenbegehung + Vorprüfung" -> „Baustellenbegehung sowie Vorprüfung durchgeführt."
     const obj = /^\+/.test(st.rest) ? 'sowie ' + st.rest.replace(/^\+\s*/, '') : genitiv(plusAlsSowie(st.rest));
+    // Partizip-Stil: „Montage der PZE" -> „PZE montiert." (nur ohne „begonnen/abgeschlossen")
+    const partizip = R.partizipien[lc(m[1])];
+    if (partizip && obj && /^(vollständig )?durchgeführt$/.test(st.status) && !/^(sowie|und|oder|von (der|dem|den|\d))(?![\p{L}])/iu.test(obj)) {
+      const vollst = st.status.startsWith('vollständig') ? 'vollständig ' : '';
+      return `${ersterGross(nominativ(obj))} ${vollst}${partizip}.`;
+    }
     return `${wort}${obj ? ' ' + obj : ''} ${st.status}.`;
   }
 
@@ -348,6 +392,14 @@ const Textkorrektur = (() => {
       // selbst eine Aufzählung (Komma) bzw. nur ein einzelner Eintrag („HGA").
       const offeneListe = vorher && !eigeneTaetigkeit && (/[:,]\s*$/.test(vorher)
         || (aktionKopfRe.test(nv) && /:/.test(nv) && (/,/.test(s) || s.split(/\s+/).length <= 6)));
+      // Begründung in eigener Zeile („Ausfall" / „Da keine Arbeiten möglich sind") gehört zum
+      // kurzen, unvollständigen Satz davor.
+      const begruendung = vorher && /^(da|weil|denn|wegen|aufgrund|daher|deshalb)\s/iu.test(s)
+        && !/[.!?:]\s*$/.test(vorher) && avlOhneTechniker(vorher).split(/\s+/).filter(Boolean).length <= 4;
+      if (begruendung) {
+        out[out.length - 1] = vorher.replace(/[,\s]+$/, '') + ', ' + s.charAt(0).toLocaleLowerCase('de-DE') + s.slice(1);
+        continue;
+      }
       if (offeneListe) {
         out[out.length - 1] = vorher.replace(/[,\s]+$/, '') + (/:\s*$/.test(vorher) ? ' ' : ', ') + s;
       } else {
@@ -379,7 +431,12 @@ const Textkorrektur = (() => {
     text = text.replace(/\(\s*\)/g, '').replace(/^[\s-–]+/gm, '').trim();
     return { text, avl };
   }
-  const enthaeltAvl = (s) => [...avlRe, ...avlMinRe].some((re) => { re.lastIndex = 0; const t = re.test(s); re.lastIndex = 0; return t; });
+  // Zeile ohne AVL-Angabe (zum Zählen der Wörter: „3 Techniker a 40 Stunden Ausfall" -> „Ausfall")
+  function avlOhneTechniker(s) {
+    for (const re of [...avlRe, ...avlMinRe]) { re.lastIndex = 0; s = s.replace(re, ' '); re.lastIndex = 0; }
+    return s.trim();
+  }
+  const enthaeltAvl =(s) => [...avlRe, ...avlMinRe].some((re) => { re.lastIndex = 0; const t = re.test(s); re.lastIndex = 0; return t; });
 
   // ---------------- Hauptfunktion ----------------
   function korrigiere(text, feld) {
@@ -434,7 +491,18 @@ const Textkorrektur = (() => {
       hinweise.push(`${freieZeilen} ${freieZeilen === 1 ? 'Zeile wurde' : 'Zeilen wurden'} nur sprachlich bereinigt, nicht umformuliert – bitte besonders prüfen.`);
     }
     const trenner = '\n' + (R.leerzeileZeichen || '') + '\n';
-    return { text: saetze.join(trenner), regeln: [...regeln], hinweise, freieZeilen };
+    let ergebnis = saetze.join(trenner);
+    // Abkürzung beim ersten Vorkommen ausschreiben (Spec §11.1): erstes „AP 12" im Feld ->
+    // „Access Point (AP) 12", sofern „(AP)" nicht schon vorher ausgeschrieben steht.
+    if (R.apGruppieren) {
+      const bar = ergebnis.match(/(?<![\p{L}(])(des\s+)?AP (\d+)(?! und \d)/u);
+      const aus = ergebnis.indexOf('(AP)');
+      if (bar && (aus < 0 || bar.index < aus)) {
+        const neu = bar[1] ? `${bar[1]}Access Points (AP) ${bar[2]}` : `Access Point (AP) ${bar[2]}`;
+        ergebnis = ergebnis.slice(0, bar.index) + neu + ergebnis.slice(bar.index + bar[0].length);
+      }
+    }
+    return { text: ergebnis, regeln: [...regeln], hinweise, freieZeilen };
   }
 
   return { korrigiere };

@@ -239,6 +239,21 @@ const TEXTREGELN = {
     'Querungen'],
   // Abweichende Ausgabe für ein Hauptwort („Patchen der NWS" -> „Patchung der …")
   hauptwortAlias: { 'patchen': 'Patchung' },
+  // Kurzer Partizip-Stil (Stil der neueren Bautagebücher, mit Michael abgestimmt):
+  // „Montage der PZE" -> „PZE montiert.", „Einbau der Hardware in die NWS" -> „Hardware in die
+  // Netzwerkschränke (NWS) eingebaut." Hauptwörter ohne Eintrag hier behalten „… durchgeführt.".
+  partizipien: {
+    'montage': 'montiert', 'demontage': 'demontiert', 'aufnahme': 'aufgenommen', 'einbau': 'eingebaut',
+    'aufbau': 'aufgebaut', 'neuaufbau': 'neu aufgebaut', 'zusammenbau': 'zusammengebaut',
+    'inbetriebnahme': 'in Betrieb genommen', 'registrierung': 'registriert', 'konfiguration': 'konfiguriert',
+    'verbinden': 'verbunden', 'bereinigung': 'bereinigt', 'beschriftung': 'beschriftet',
+    'annahme': 'entgegengenommen', 'sortieren': 'sortiert', 'einführen': 'eingeführt', 'auflegen': 'aufgelegt',
+    'aufteilen': 'aufgeteilt', 'abschellen': 'abgeschellt', 'stellen': 'aufgestellt', 'reinigung': 'gereinigt',
+    'austausch': 'ausgetauscht', 'tausch': 'getauscht', 'kontrolle': 'kontrolliert', 'vorbereitung': 'vorbereitet',
+  },
+  // Mehrere „AP n" in einer Liste -> „Access Points (AP) 1, 2 und 4"; erste Einzelnennung im
+  // Feld -> „Access Point (AP) 12".
+  apGruppieren: true,
   // Diese Hauptwörter bilden schon einen Satz – kein „durchgeführt" anhängen.
   hauptwoerterOhneZusatz: ['Weiterführung', 'Fortführung', 'Fertigstellung', 'Beginn'],
   // Statuswörter am Zeilenende -> Ausgabe statt „durchgeführt"
