@@ -55,6 +55,14 @@ const Textkorrektur = (() => {
   const festeZeilen = new Map();
   R.festeZeilen.forEach((f) => f.zeilen.forEach((z) => festeZeilen.set(z, f.satz)));
 
+  // Satzenden, die die Korrektur selbst erzeugt – eine Zeile, die so endet, ist schon fertig.
+  // Statuswörter („begonnen", „abgeschlossen" …) fehlen bewusst: die trennt statusAbtrennen sauber ab.
+  const fertigeEnden = new Set(['durchgeführt', 'erstellt', 'gehalten',
+    ...Object.values(R.partizipien).map((p) => p.split(' ').pop())]);
+  R.festeZeilen.forEach((f) => fertigeEnden.add(f.satz.replace(/\.$/, '').split(' ').pop()));
+  Object.keys(R.status).forEach((s) => fertigeEnden.delete(s));
+  const fertigRe = new RegExp(`(?<![\\p{L}])(${[...fertigeEnden].map((e) => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})$`, 'iu');
+
   const aktionsMap = new Map();
   R.aktionen.forEach((a) => a.eingabe.forEach((e) => aktionsMap.set(e, a)));
   const aktAlt = [...aktionsMap.keys()].sort((a, b) => b.length - a.length).map(esc).join('|');
@@ -298,6 +306,9 @@ const Textkorrektur = (() => {
 
   function vorlage(zeile) {
     const ohnePunkt = zeile.replace(/[.\s]+$/u, '');
+    // Schon fertiger Satz (endet auf „durchgeführt", „montiert" …): nicht noch einmal umbauen.
+    // Sonst würde ein zweiter Klick auf „Texte korrigieren" z. B. „durchgeführt" doppelt anhängen.
+    if (fertigRe.test(ohnePunkt)) return null;
     // Abstimmungen dürfen einen Nebensatz mit „da …" enthalten – daher vor der Verb-Prüfung
     const abst = vorlageAbstimmung(ohnePunkt);
     if (abst) return abst;
@@ -470,6 +481,9 @@ const Textkorrektur = (() => {
       const n = normalisiere(z);
       if (n !== satzzeichen(z)) regeln.add('Schreibweisen und Fachbegriffe');
       let satz = vorlageMitPlus(n);
+      // Regex-Regeln auch auf den neu gebauten Satz anwenden („für gesamter …", „der NWS"),
+      // damit ein zweiter Durchlauf nichts mehr ändert.
+      if (satz) { for (const [re, ers] of regexRegeln) satz = satz.replace(re, ers); }
       if (satz) regeln.add('Standardformulierung');
       else { satz = freierSatz(n); freieZeilen++; }
       satz = satzbau(satz);

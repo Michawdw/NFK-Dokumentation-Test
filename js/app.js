@@ -100,17 +100,20 @@ const App = (() => {
   // Lange Inhalte (Ordner mit vielen Bildern) werden nur über den sichtbaren Teil animiert:
   // Was unterhalb des Bildschirmrands liegt, sieht ohnehin niemand – so bleibt die
   // Animation auch auf alten Handys kurz und ruckelfrei, egal wie lang der Ordner ist.
-  function sichtbareHoehe(el, h) {
-    const rest = window.innerHeight - el.getBoundingClientRect().top + 40;
+  // obenBei: Bildschirmhöhe, an der der Inhalt nach einem gleichzeitigen Scrollen beginnt
+  // (sonst die aktuelle Lage) – dann wird über den am Ende sichtbaren Teil animiert.
+  function sichtbareHoehe(el, h, obenBei) {
+    const top = obenBei != null ? obenBei : el.getBoundingClientRect().top;
+    const rest = window.innerHeight - top + 40;
     return Math.min(h, Math.max(120, rest));
   }
 
   // Aufklappen: Höhe 0 → natürliche Höhe. Das Element steht bereits fertig im DOM.
-  function animOpen(el) {
+  function animOpen(el, obenBei) {
     if (ohneAnimation(el)) return;
     const h = el.offsetHeight;
     if (!h) return;
-    const ziel = sichtbareHoehe(el, h);
+    const ziel = sichtbareHoehe(el, h, obenBei);
     const cs = getComputedStyle(el);
     el.style.overflow = 'hidden';
     const a = el.animate([
@@ -1092,13 +1095,58 @@ const App = (() => {
       const body = kopf && kopf.nextElementSibling;
       if (body && body.classList.contains('tree-body')) {
         kopf.classList.add('zu');            // Pfeil dreht schon mit zurück
-        await animClose(body);
+        // Klappt ein langer Ordner OBERHALB des angetippten zu, würde die Seite unter dem
+        // Finger wegrutschen und der angetippte Ordner nach oben aus dem Bild laufen.
+        // Deshalb hält die Ansicht ihn während der Animation Bild für Bild an seiner Stelle.
+        const halt = halteKopf(treeKopf(anker));
+        // Die Animation startet mit der sichtbaren Höhe statt der vollen – der Rest eines langen
+        // Ordners fällt sofort weg. Diese Starthöhe schon vorher setzen und den Sprung im selben
+        // Moment ausgleichen (der Ordner wird danach ohnehin neu gezeichnet).
+        if (!ohneAnimation(body)) {
+          body.style.height = sichtbareHoehe(body, body.offsetHeight) + 'px';
+          body.style.overflow = 'hidden';
+          halt.jetzt();
+        }
+        const zu = animClose(body);
+        await zu;
+        halt.jetzt();
+        halt.stop();
       }
       if (umschalten()) treeAufgeklappt = anker;
       await renderTree(anker);
     } finally {
       treeKlappt = false;
     }
+  }
+
+  // Hält eine Kopfzeile während einer Animation auf derselben Bildschirmhöhe (scrollt Bild
+  // für Bild mit). jetzt() gleicht sofort aus, stop() beendet das Mitscrollen.
+  function halteKopf(el) {
+    if (!el) return { jetzt() {}, stop() {} };
+    const soll = el.getBoundingClientRect().top;
+    let laeuft = true;
+    const jetzt = () => {
+      if (!el.isConnected) return;
+      const diff = el.getBoundingClientRect().top - soll;
+      if (Math.abs(diff) >= 1) window.scrollBy(0, diff);
+    };
+    const schritt = () => {
+      if (!laeuft) return;
+      jetzt();
+      requestAnimationFrame(schritt);
+    };
+    requestAnimationFrame(schritt);
+    return { jetzt, stop() { laeuft = false; } };
+  }
+
+  // Frisch aufgeklappter Ordner: Kopfzeile weich an den oberen Rand (unter die Kopfleiste)
+  // schieben, damit sein Inhalt darunter vollständig im Blick ist. Liefert die Zielhöhe.
+  function kopfNachOben(kopf) {
+    const leiste = $('.topbar');
+    const oben = (leiste ? leiste.getBoundingClientRect().bottom : 0) + 8;
+    const ziel = Math.max(0, window.scrollY + kopf.getBoundingClientRect().top - oben);
+    window.scrollTo({ top: ziel, behavior: reduceMotion.matches ? 'auto' : 'smooth' });
+    return oben + kopf.offsetHeight;
   }
 
   async function renderTree(anker) {
@@ -1262,7 +1310,7 @@ const App = (() => {
       const kopf = treeKopf(treeAufgeklappt);
       treeAufgeklappt = null;
       const body = kopf && kopf.nextElementSibling;
-      if (body && body.classList.contains('tree-body')) animOpen(body);
+      if (body && body.classList.contains('tree-body')) animOpen(body, kopfNachOben(kopf));
       dreheChev(kopf);
     }
   }
@@ -2111,7 +2159,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v74'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v76'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;

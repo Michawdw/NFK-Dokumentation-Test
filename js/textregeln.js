@@ -83,7 +83,6 @@ const TEXTREGELN = {
     'vocovos': 'VoCoVo-Komponenten', 'vokovos': 'VoCoVo-Komponenten',
     'vocovo': 'VoCoVo', 'vokovo': 'VoCoVo',
     "ap's": 'Access Points (AP)', 'aps': 'Access Points (AP)',
-    'access points': 'Access Points (AP)',
     'digital signage': 'Digital Signage', 'digitalsignage': 'Digital Signage',
     'instore communication': 'In-Store-Communication (I.C.)',
     'in-store communication': 'In-Store-Communication (I.C.)',
@@ -104,7 +103,6 @@ const TEXTREGELN = {
     'wago': 'WAGO', 'mde geräte': 'MDE-Geräte', 'owa decken': 'OWA-Decken', 'owa-decken': 'OWA-Decken',
     'xweb': 'XWEB', 'x-web': 'XWEB',
     'pze': 'PZE', 'hga': 'HGA', 'cctv': 'CCTV', 'kwlan': 'KWLAN', 'kvm': 'KVM', 'mats': 'MAT', 'mat': 'MAT',
-    'kv': 'Kleinverteiler (KV)',
     'baracuda': 'Barracuda', 'barracuda': 'Barracuda',
     'fortigate': 'FortiGate', 'forti gate': 'FortiGate',
     'flex pos': 'FlexPos', 'flexpos': 'FlexPos',
@@ -126,6 +124,10 @@ const TEXTREGELN = {
     ['Netzwerkschränke(n?)(?!\\s*\\(NWS\\))(?=[\\s.,;]|$)', 'Netzwerkschränke$1 (NWS)'],
     // DS ohne Ausschreibung -> Digital Signage (DS)
     ['(?<![\\p{L}(])DS(?![\\p{L})])', 'Digital Signage (DS)'],
+    // Abkürzungen ausschreiben – nicht, wenn sie schon in Klammern hinter dem Begriff stehen
+    // (sonst entstünde beim zweiten Korrigieren „Access Points (AP) (AP)")
+    ['(?<![\\p{L}])Access Points(?!\\s*\\(AP\\))', 'Access Points (AP)'],
+    ['(?<![\\p{L}(])KV(?![\\p{L})])', 'Kleinverteiler (KV)'],
     // „IC1", „IC 2" -> „I.C. 1"
     ['(?<![\\p{L}.])IC\\s*(?=\\d)', 'I.C. '],
     // „Besprechung 1+2" ist der Raum, „Besprechung mit …" nicht
@@ -291,7 +293,7 @@ const TEXTREGELN = {
       'elektriker': 'dem Elektriker', 'dem elektriker': 'dem Elektriker', 'support': 'dem Support',
       'dem support': 'dem Support', 'bauleiter': 'der Bauleitung', 'bauleitung': 'der Bauleitung',
       'der bauleitung': 'der Bauleitung', 'gu': 'dem Generalunternehmer (GU)', 'flexpos': 'FlexPos',
-      'polier': 'dem Polier', 'plb': 'dem PLB', 'lidl': 'LIDL',
+      'polier': 'dem Polier', 'plb': 'dem PLB', 'lidl': 'Lidl',
     },
   },
 
