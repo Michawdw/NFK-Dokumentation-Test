@@ -1614,6 +1614,93 @@ const App = (() => {
       f.ortDatum.value = defaultOrtDatum(datum);
       renderDiaryRows(techs.map((t) => ({ name: t })));
     }
+    korrekturVorher = null;
+    $('#diaryKorrUndo').hidden = true;
+  }
+
+  // ---- Texte korrigieren (regelbasiert, js/textkorrektur.js) ----
+  // Zeigt je Textfeld Original und Vorschlag mit markierten Änderungen; der Techniker
+  // wählt, was übernommen wird. Die Originale bleiben bis zum Tageswechsel für
+  // „Korrektur rückgängig" erhalten.
+  const KORR_FELDER = [
+    ['taetigkeiten', 'Beschreibung der Tätigkeiten'],
+    ['behinderungen', 'Behinderungen'],
+    ['vorkommnisse', 'Besondere Vorkommnisse'],
+  ];
+  let korrekturVorher = null;
+
+  // Wort-Diff (LCS über Wörter und Leerraum): zeigt den neuen Text, geänderte/neue Wörter
+  // hervorgehoben. Gelöschte Wörter werden nicht eingeblendet – auf dem Handy wäre der
+  // Text sonst kaum lesbar; das Original ist im Dialog aufklappbar.
+  function wortDiffHtml(alt, neu) {
+    const a = alt.split(/(\s+)/).filter((t) => t !== '');
+    const b = neu.split(/(\s+)/).filter((t) => t !== '');
+    const n = a.length, m = b.length;
+    const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) {
+      for (let j = m - 1; j >= 0; j--) {
+        L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+      }
+    }
+    const out = [];
+    let i = 0, j = 0;
+    const leer = (t) => /^\s+$/.test(t);
+    while (i < n || j < m) {
+      if (i < n && j < m && a[i] === b[j]) { out.push(escHtml(b[j])); i++; j++; }
+      else if (j < m && (i >= n || L[i][j + 1] >= L[i + 1][j])) {
+        out.push(leer(b[j]) ? escHtml(b[j]) : `<ins>${escHtml(b[j])}</ins>`); j++;
+      } else {
+        i++;
+      }
+    }
+    return out.join('');
+  }
+
+  function openTextkorrektur() {
+    const f = $('#diaryForm');
+    const vorschlaege = KORR_FELDER.map(([name, titel]) => {
+      const alt = f[name].value;
+      const erg = Textkorrektur.korrigiere(alt, name);
+      return { name, titel, alt, neu: erg.text, hinweise: erg.hinweise, geaendert: alt.trim() !== '' && erg.text !== alt };
+    });
+    if (vorschlaege.every((v) => !v.alt.trim())) {
+      toast('Noch kein Text eingetragen.');
+      return;
+    }
+    if (!vorschlaege.some((v) => v.geaendert)) {
+      toast('Keine Korrektur nötig – die Texte entsprechen bereits den Regeln.');
+      return;
+    }
+    const html = '<p class="tk-info">Vorschlag nach den hinterlegten Schreibregeln (ohne KI). '
+      + '<ins>Markiert</ins> = geändert. Bitte inhaltlich gegenlesen – '
+      + 'nach dem Übernehmen kann im Feld weiter geändert werden.</p>'
+      + vorschlaege.filter((v) => v.alt.trim()).map((v) => `
+        <div class="tk-feld">
+          <label class="tk-wahl"><input type="checkbox" name="${v.name}" ${v.geaendert ? 'checked' : 'disabled'} />
+            ${escHtml(v.titel)}${v.geaendert ? '' : ' – keine Änderung'}</label>
+          ${v.geaendert ? `<div class="tk-diff">${wortDiffHtml(v.alt, v.neu)}</div>
+            <details class="tk-orig"><summary>Original anzeigen</summary><div>${escHtml(v.alt)}</div></details>` : ''}
+          ${v.hinweise.length ? `<ul class="tk-hinweise">${v.hinweise.map((h) => `<li>${escHtml(h)}</li>`).join('')}</ul>` : ''}
+        </div>`).join('');
+    openConfirm('Texte korrigieren', html, 'Auswahl übernehmen', false, 'Verwerfen').then((ok) => {
+      if (!ok) return;
+      // Häkchen wurden vor dem Schließen gesetzt – Body ist noch im DOM
+      const gewaehlt = vorschlaege.filter((v) => v.geaendert && $(`#modalBody input[name="${v.name}"]`)?.checked);
+      if (!gewaehlt.length) return;
+      korrekturVorher = {};
+      gewaehlt.forEach((v) => { korrekturVorher[v.name] = v.alt; f[v.name].value = v.neu; });
+      $('#diaryKorrUndo').hidden = false;
+      toast('Korrektur übernommen – bitte gegenlesen und Tag speichern.');
+    });
+  }
+
+  function undoTextkorrektur() {
+    if (!korrekturVorher) return;
+    const f = $('#diaryForm');
+    Object.entries(korrekturVorher).forEach(([name, alt]) => { f[name].value = alt; });
+    korrekturVorher = null;
+    $('#diaryKorrUndo').hidden = true;
+    toast('Originaltexte wiederhergestellt.');
   }
 
   function defaultOrtDatum(datum) {
@@ -2004,6 +2091,8 @@ const App = (() => {
     // die Übergabe des Kollegen heran.
     $('#startImport').addEventListener('change', importAnyFile);
     $('#diarySaveBtn').onclick = saveDiary;
+    $('#diaryKorrBtn').onclick = openTextkorrektur;
+    $('#diaryKorrUndo').onclick = undoTextkorrektur;
     $('#diaryExportBtn').onclick = busy(exportDiary);
     // Schatten unter der Kopfleiste, sobald darunter gescrollt wird.
     const topbar = $('.topbar');
@@ -2022,7 +2111,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v72'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v74'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;

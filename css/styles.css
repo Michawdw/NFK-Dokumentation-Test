@@ -824,3 +824,17 @@ textarea, input, select, button { font-family: inherit; }
 .tree-ober.open .skip-btn, .tree-unter.open .skip-btn { border-color: var(--open-1-line); }
 /* Als „nicht benötigt" markiert: bleibt grau gestrichelt, auch wenn geöffnet. */
 .tree-ober.open.skipped, .tree-unter.open.skipped { background: #f3f4f6; }
+
+/* ---- Texte korrigieren (Vorschau-Dialog) ---- */
+.tk-info { color: var(--muted); font-size: 14px; margin: 0 0 10px; }
+.tk-feld { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 0 0 12px; }
+.modal label.tk-wahl { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; }
+.modal label.tk-wahl input { width: 22px; height: 22px; margin: 0; flex: none; }
+.tk-diff { white-space: pre-wrap; font-size: 15px; line-height: 1.5; background: #f7f9fb; border-radius: 8px; padding: 8px 10px; }
+.tk-diff ins, .tk-info ins { background: #d6f5dd; color: #11632a; text-decoration: none; border-radius: 3px; }
+.tk-diff del, .tk-info del { color: var(--warn); opacity: .75; }
+.tk-hinweise { margin: 8px 0 0; padding-left: 20px; color: #9a5b00; font-size: 13px; }
+.tk-hinweise li { margin: 2px 0; }
+.tk-orig { margin-top: 6px; font-size: 13px; color: var(--muted); }
+.tk-orig summary { cursor: pointer; padding: 4px 0; }
+.tk-orig div { white-space: pre-wrap; padding: 6px 10px; border-left: 3px solid var(--line); }
