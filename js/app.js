@@ -2159,7 +2159,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v77'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
+  const APP_VERSION = 'v78'; // Bei jeder App-Änderung zusammen mit CACHE in sw.js erhöhen.
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
@@ -2192,6 +2192,65 @@ const App = (() => {
     frage();
   }
 
+  // ---- Warnung: App läuft nicht vom Startbildschirm ----
+  // Auf dem iPhone löscht iOS die Daten einer nur in Safari geöffneten Seite nach etwa einer
+  // Woche ohne Nutzung – mit allen Fotos und Aufträgen. Für installierte Apps gilt das nicht.
+  // Außerdem hat die installierte App eigene Daten, getrennt vom Browser. Deshalb auf Handys
+  // deutlich darauf hinweisen (übernommen aus der Auftragsdoku-App, dort im Einsatz bewährt).
+  function laeuftAlsApp() {
+    // display-mode deckt Android/Chrome ab, navigator.standalone das iPhone.
+    try { if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true; } catch (e) { /* egal */ }
+    return navigator.standalone === true;
+  }
+  function istApple() {
+    // iPadOS ab 13 meldet sich als Mac – erkennbar daran, dass es Touch kann.
+    return /iP(hone|ad|od)/.test(navigator.userAgent)
+      || (/Mac/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  }
+  const INSTALL_TEXT = {
+    ios: '<b>Die App läuft gerade als Safari-Seite.</b> Fotos und Aufträge liegen nur auf diesem '
+      + 'Gerät – iOS löscht sie nach etwa einer Woche ohne Nutzung. Jetzt eine Sicherung (ZIP) machen. '
+      + 'Danach: Teilen-Symbol antippen → „Zum Home-Bildschirm“ und die App künftig nur noch von dort '
+      + 'starten. Achtung: Die installierte App hat eigene Daten – Aufträge über „Auftrag übernehmen“ '
+      + 'aus der Sicherung einlesen.',
+    android: '<b>Die App läuft gerade als Browser-Seite.</b> Fotos und Aufträge liegen nur in diesem '
+      + 'Browser. Jetzt eine Sicherung (ZIP) machen. Danach: Browser-Menü (⋮) → „App installieren“ '
+      + 'bzw. „Zum Startbildschirm hinzufügen“ und die App künftig nur noch vom Startbildschirm starten.',
+  };
+  function pruefeInstallation() {
+    const box = $('#installHinweis');
+    if (!box) return;
+    // Nur auf Handys warnen – am PC ist das Arbeiten im Browser gewollt.
+    const mobil = istApple() || /Android/.test(navigator.userAgent);
+    // Weggeklickt gilt bis morgen, nicht für immer: Wer wochenlang im Browser arbeitet, soll
+    // regelmäßig erinnert werden.
+    let weggeklickt = false;
+    try { weggeklickt = Date.now() < +(localStorage.getItem('installHinweisZuBis') || 0); } catch (e) { /* egal */ }
+    if (!mobil || laeuftAlsApp() || weggeklickt) { box.hidden = true; return; }
+    $('#installText').innerHTML = istApple() ? INSTALL_TEXT.ios : INSTALL_TEXT.android;
+    box.hidden = false;
+  }
+  function installHinweisSchliessen() {
+    try {
+      const morgen = new Date();
+      morgen.setHours(24, 0, 0, 0);
+      localStorage.setItem('installHinweisZuBis', String(morgen.getTime()));
+    } catch (e) { /* egal */ }
+    $('#installHinweis').hidden = true;
+  }
+
+  // Eine App, die nur aus dem Hintergrund geholt wird, fragt nie nach einer neuen sw.js –
+  // auf dem iPhone oft tagelang, weil iOS die App nur einfriert. Deshalb beim Zurückholen
+  // selbst nachsehen, höchstens alle 10 Minuten.
+  function pruefeUpdatesBeimZurueckholen(reg) {
+    let zuletzt = Date.now();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible' || Date.now() - zuletzt < 10 * 60 * 1000) return;
+      zuletzt = Date.now();
+      reg.update().catch(() => {});
+    });
+  }
+
   async function init() {
     // Robust starten: UI bindet sich auch dann, wenn die Daten-Initialisierung
     // (z. B. IndexedDB) auf einem Gerät klemmt – die App darf nie hängenbleiben.
@@ -2203,6 +2262,9 @@ const App = (() => {
       Wochenbericht.init();
       updateNetDot();
       initAppVersion();
+      $('#installZu').onclick = installHinweisSchliessen;
+      pruefeInstallation();
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) pruefeInstallation(); });
       window.addEventListener('online', updateNetDot);
       window.addEventListener('offline', updateNetDot);
       show('view-start');
@@ -2221,7 +2283,9 @@ const App = (() => {
       if (navigator.storage && navigator.storage.persist) await navigator.storage.persist();
     } catch (e) { /* best effort */ }
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW-Registrierung fehlgeschlagen', e));
+      navigator.serviceWorker.register('sw.js')
+        .then(pruefeUpdatesBeimZurueckholen)
+        .catch((e) => console.warn('SW-Registrierung fehlgeschlagen', e));
     }
   }
 

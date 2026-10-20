@@ -8,6 +8,13 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="assets/icon-192.png" />
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <!-- iPhone/iPad: Erst ab iOS 16.4 liest Safari das Manifest. Ohne diese Angaben startet die
+       App auf älteren Geräten mit Safari-Adressleiste, und unter dem Symbol stünde der lange
+       Seitentitel statt „NFK Doku". -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="NFK Doku" />
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
@@ -21,6 +28,12 @@
 
     <!-- ===================== START / PROJEKTKOPF ===================== -->
     <section id="view-start" class="view active">
+      <!-- Warnung, wenn die App im Browser statt vom Startbildschirm läuft (iPhone: Datenverlust
+           nach etwa einer Woche). Inhalt setzt pruefeInstallation() in app.js. -->
+      <div id="installHinweis" class="backup-banner warn install-hinweis" role="status" hidden>
+        <span class="bk-msg" id="installText"></span>
+        <button type="button" id="installZu" class="btn ghost bk-save">Schließen</button>
+      </div>
       <div class="jobs-head">
         <h2>Aufträge</h2>
         <div class="jobs-actions">

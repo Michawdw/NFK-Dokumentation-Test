@@ -838,3 +838,19 @@ textarea, input, select, button { font-family: inherit; }
 .tk-orig { margin-top: 6px; font-size: 13px; color: var(--muted); }
 .tk-orig summary { cursor: pointer; padding: 4px 0; }
 .tk-orig div { white-space: pre-wrap; padding: 6px 10px; border-left: 3px solid var(--line); }
+
+/* ---- Hinweis „Als App installieren" (Startseite) ---- */
+.install-hinweis .bk-msg { font-weight: 400; font-size: 14px; }
+.install-hinweis .bk-msg b { font-weight: 700; }
+
+/* ---- iPhone/Safari ----
+   Datumsfelder: Safari hält sich sonst nicht an die Feldbreite und schiebt sie über den Rand. */
+input[type="date"] {
+  -webkit-appearance: none; appearance: none; min-width: 0; display: block;
+  min-height: calc(1.2em + 26px);
+}
+input[type="date"]::-webkit-date-and-time-value { text-align: left; }
+/* Unterer Rand: Knöpfe und Meldungen nicht unter den Home-Balken des iPhones legen. */
+.modal { padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+.toast { bottom: calc(24px + env(safe-area-inset-bottom)); }
+.photo-overlay { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
