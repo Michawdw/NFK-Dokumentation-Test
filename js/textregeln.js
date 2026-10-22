@@ -15,6 +15,9 @@ const TEXTREGELN = {
   leerzeileZeichen: '',
 
   // Zeilenanfänge, die entfernt werden (Spiegelstriche, „Punkt 3 –").
+  // Zeilen, die nur Überschrift des ganzen Eintrags sind und entfallen
+  ueberschriften: ['bautagebuchbericht', 'bautagebuch', 'tätigkeiten', 'tagesbericht'],
+
   praefixe: [
     '^\\s*[-–—•*·]+\\s*',
     '^\\s*Punkt\\s*\\d+\\s*[:.–-]\\s*',
@@ -60,6 +63,11 @@ const TEXTREGELN = {
     'istyleitungen': 'Y(St)Y-Leitungen', 'ystyleitungen': 'Y(St)Y-Leitungen',
     'aufchiepen': 'Aufclipsen', 'gechipt': 'geclipst',
     'datenkabelzug': 'Kabelzug',
+    'trnsferkabel': 'Transferkabel', 'vogovo': 'VoCoVo', 'lautsprechekabel': 'Lautsprecherkabel',
+    'einbrigen': 'Einbringen', 'serveraum': 'Serverraum', 'lilli': 'LILI', 'vorort': 'vor Ort',
+    'kundenwlan': 'Kunden-WLAN', 'kunden wlan': 'Kunden-WLAN', 'displayport': 'DisplayPort',
+    'lager res.': 'Lagerreserve', 'lager res': 'Lagerreserve', 'backenbereich': 'Backbereich',
+    'mac adresse': 'MAC-Adresse', 'e ameise': 'E-Ameise', 'testanruf': 'Testanruf',
   },
 
   // ---- 2. Begriffe (Wort/Phrase -> Standardschreibweise), längere Phrasen zuerst ----
@@ -73,7 +81,8 @@ const TEXTREGELN = {
     'datenleitungen': 'Datenleitungen', 'datenleitung': 'Datenleitung',
     'transfer kabel': 'Transferkabel', 'transferkabel': 'Transferkabel',
     'daten ports': 'Datenports', 'datenports': 'Datenports', 'datendosen': 'Datendosen', 'datendose': 'Datendose',
-    'ysty kabel': 'Y(ST)Y-Leitungen', 'ysty': 'Y(ST)Y',
+    'ysty kabel': 'Y(St)Y-Leitungen', 'ysty leitungen': 'Y(St)Y-Leitungen', 'ysty leitung': 'Y(St)Y-Leitung',
+    'ysty': 'Y(St)Y',
     'cat kabel': 'CAT-Datenleitungen',
     // Systeme / Hardware
     'vocovo ausleuchtung': 'VoCoVo-Ausleuchtung',
@@ -128,6 +137,10 @@ const TEXTREGELN = {
     // (sonst entstünde beim zweiten Korrigieren „Access Points (AP) (AP)")
     ['(?<![\\p{L}])Access Points(?!\\s*\\(AP\\))', 'Access Points (AP)'],
     ['(?<![\\p{L}(])KV(?![\\p{L})])', 'Kleinverteiler (KV)'],
+    // „I.C.im" -> „I.C. im" (sonst entstünde „I.C..im")
+    ['I\\.C\\.\\.?(?=\\p{L})', 'I.C. '],
+    // „in denn Serverraum" -> „in den Serverraum"
+    ['(?<![\\p{L}])(in|für|auf|an|über) denn (?=\\p{Lu})', '$1 den '],
     // „IC1", „IC 2" -> „I.C. 1"
     ['(?<![\\p{L}.])IC\\s*(?=\\d)', 'I.C. '],
     // „Besprechung 1+2" ist der Raum, „Besprechung mit …" nicht
@@ -223,7 +236,7 @@ const TEXTREGELN = {
     'pfand': 'Pfandbereich', 'backen': 'Backbereich', 'sozialraum küche': 'Sozialraum/Küche',
     'kassen': 'Kassenbereich', 'verkaufsbereich': 'Verkaufsbereich', 'lager': 'Lager',
     'aktenraum': 'Aktenraum', 'kleinverteiler': 'Kleinverteiler', 'küche': 'Küche', 'büro': 'Büro',
-    'technikebene': 'Technikebene', 'serverraum': 'Serverraum', 'komplett backen': 'kompletter Backbereich',
+    'technikebene': 'Technikebene', 'serverraum': 'Serverraum', 'headsetkanal': 'Headsetkanal', 'besprechungsraum': 'Besprechungsraum', 'bedienerkassen': 'Bedienerkassen', 'komplett backen': 'kompletter Backbereich',
   },
   // Bereichsangabe vor der Liste („Ausbau Verkauf: AP 2, …") -> Dativ
   bereiche: {
@@ -301,17 +314,17 @@ const TEXTREGELN = {
   avl: {
     muster: [
       // „3 Techniker 8h", „3 Mann a 2,5 Stunden", „2 Man a 2 Stunden", „1 Techniker 1 Stunde"
-      '(\\d+)\\s*(?:Techniker|Mann|Man|MA|Mitarbeiter)\\s*(?:à|á|a|je|jeweils|x|mit|für)?\\s*(\\d+(?:[.,]\\d+)?)\\s*(?:h|Std\\.?|Stunden|Stunde)(?![\\p{L}])',
+      '(\\d+)\\s*(?:Techniker|Mann|Man|MA|Mitarbeiter|Personen|Person)\\s*(?:à|á|a|je|jeweils|x|mit|für)?\\s*(\\d+(?:[.,]\\d+)?)\\s*(?:h|Std\\.?|Stunden|Stunde)(?![\\p{L}])',
       // „1x1,5h", „1x0,25h"
       '(\\d+)\\s*[x×]\\s*(\\d+(?:[.,]\\d+)?)\\s*(?:h|Std\\.?|Stunden|Stunde)(?![\\p{L}])',
     ],
     // „1 Techniker 90 Minuten" -> Minuten werden in Stunden umgerechnet
     musterMinuten: [
-      '(\\d+)\\s*(?:Techniker|Mann|Man|MA|Mitarbeiter)\\s*(?:à|á|a|je|jeweils|x|mit|für)?\\s*(\\d+)\\s*(?:min|Min\\.?|Minuten)(?![\\p{L}])',
+      '(\\d+)\\s*(?:Techniker|Mann|Man|MA|Mitarbeiter|Personen|Person)\\s*(?:à|á|a|je|jeweils|x|mit|für)?\\s*(\\d+)\\s*(?:min|Min\\.?|Minuten)(?![\\p{L}])',
       '(\\d+)\\s*[x×]\\s*(\\d+)\\s*(?:min|Min\\.?|Minuten)(?![\\p{L}])',
     ],
     // Techniker genannt, aber keine Stunden -> Hinweis
-    ohneStunden: '(\\d+)\\s*(?:Techniker|Mann|Man|Mitarbeiter)(?![\\p{L}])',
+    ohneStunden: '(\\d+)\\s*(?:Techniker|Mann|Man|Mitarbeiter|Personen|Person)(?![\\p{L}])',
     format: 'AVL: {t} Techniker, jeweils {h}.',
     formatEinTechniker: 'AVL: 1 Techniker, {h}.',
   },

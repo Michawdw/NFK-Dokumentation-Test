@@ -52,6 +52,7 @@ const Textkorrektur = (() => {
     + `stand|fehlt|fehlen|befand|befinden|traten|zeigten|ließ|ließen|ging|gingen|lief|liefen|`
     + `da|weil|dass|sodass)(?![${BUCHST}])`, 'iu');
 
+  const ueberschriften = new Set((R.ueberschriften || []).map(lc));
   const festeZeilen = new Map();
   R.festeZeilen.forEach((f) => f.zeilen.forEach((z) => festeZeilen.set(z, f.satz)));
 
@@ -84,6 +85,11 @@ const Textkorrektur = (() => {
 
   // ---------------- Normalisierung einer Zeile ----------------
   function zahlen(s) {
+    // Kurzliste „AP5,6,7,10,11" / „Ap 1,2,8,9" -> „AP 5, AP 6, …" (wird später gruppiert)
+    // „…, 12/vocovo 1" – Schrägstrich zwischen Nummer und neuem Begriff trennt zwei Einträge
+    s = s.replace(/(\d)\s*\/\s*(?=\p{L})/gu, '$1, ');
+    s = s.replace(/(?<![\p{L}])AP\s*(\d+(?:\s*[,/]\s*\d+)+)(?![\d.])/giu,
+      (m, liste) => liste.split(/\s*[,/]\s*/).map((n) => 'AP ' + n).join(', '));
     s = s.replace(nummernRe, (m) => (nummernKanon[lc(m)] || m) + ' ');
     // „1+2", „1 u.2", „3/4", „1 & 2" -> „1 und 2" (nicht innerhalb von Bereichen wie 1-2+3-4)
     s = s.replace(/(?<![-–]\s*)(?<!\d|\d[.,])(\d+)\s*(?:\+|&|\/|u\.?|und\.?)\s*(\d+)(?!\d|[.,]\d)(?!\s*[-–]\s*\d)/giu, '$1 und $2');
@@ -132,6 +138,16 @@ const Textkorrektur = (() => {
       const key = lc(t).replace(/\s+/g, ' ');
       return listenEintraege[key] || t;
     });
+    // Nackte Nummern gehören zum Eintrag davor: „VoCoVo 1", „2", „3" -> „VoCoVo 1, 2 und 3"
+    const gruppen = [];
+    for (const t of teile) {
+      const vorher = gruppen[gruppen.length - 1];
+      if (/^\d+$/.test(t) && vorher && vorher.nummern) { vorher.nummern.push(t); continue; }
+      const m = t.match(/^(.*\D)\s(\d+)$/u);
+      gruppen.push(m && !/^AP$/i.test(m[1]) ? { name: m[1], nummern: [m[2]] } : { text: t });
+    }
+    teile = gruppen.map((g) => (g.text != null ? g.text
+      : `${g.name} ${g.nummern.length > 1 ? undListe(g.nummern) : g.nummern[0]}`));
     // Hat der Techniker selbst schon „sowie"/„und" vor dem letzten Eintrag gesetzt, bleibt es dabei.
     const eigenesSowie = teile.length > 1
       && (teile.some((t) => /\ssowie\s/iu.test(t)) || /(?<!\d)\sund\s(?!\d)/iu.test(teile[teile.length - 1]));
@@ -376,6 +392,16 @@ const Textkorrektur = (() => {
       }
       s = s.trim();
       if (!s) return;
+      // Überschrift des ganzen Eintrags („Bautagebuchbericht") entfällt
+      if (ueberschriften.has(lc(s).replace(/[:.\s]+$/u, ''))) return;
+      // „Stichwort: ganzer Satz" – das Stichwort entfällt, wenn es im Satz ohnehin vorkommt
+      // („Barracuda: Barracuda ausgetauscht …", „PZE: Defektes Patchkabel am PZE …").
+      // Kommt es nicht vor („Netzwerkschrank 1: Hardwareeinbau …"), bleibt es als Information.
+      const st = s.match(/^([\p{L}][\p{L}-]*(?:\s[\p{L}-]+){0,3})\s*:\s+(.{20,})$/u);
+      if (st && !aktionKopfRe.test(st[1]) && !hauptwortRe.test(st[1]) && !R.bereiche[lc(st[1])]) {
+        const stichwort = lc(st[1].split(/[\s-]/)[0]).replace(/s$/, '');
+        if (stichwort.length >= 3 && lc(st[2]).includes(stichwort)) s = st[2];
+      }
       // „Punkt 2 – Stromversorgung" als reine Überschrift über weiteren Zeilen entfällt
       const folgt = roh.slice(i + 1).some((x) => x.trim());
       if (warUeberschrift && folgt && s.split(/\s+/).length <= 4 && !/[.:]$/.test(s) && !/\d/.test(s)) return;
@@ -392,17 +418,25 @@ const Textkorrektur = (() => {
       if (kopf) {
         const b = s.match(/^([\p{L} -]+?)\s*:\s*\(?(.+?)\)?\s*$/u);
         if (b) { out.push(`${kopf} ${b[1]}: ${b[2]}`); continue; }
+        // „Ausbau:" und darunter direkt die Liste („AP5,6,7, VoCoVo 2, …")
+        if (!aktionKopfRe.test(n) && !hauptwortRe.test(n) && !finitRe.test(n)) {
+          out.push(`${kopf}: ${s}`);
+          kopf = null;
+          continue;
+        }
         kopf = null;
       }
       const vorher = out[out.length - 1];
       const nv = vorher ? normalisiere(vorher) : '';
       // Eigene Tätigkeit beginnt nie als Fortsetzung („…, PZE," gefolgt von „Arbeiten an den NWS")
       const eigeneTaetigkeit = aktionKopfRe.test(n) || hauptwortRe.test(n) || finitRe.test(n)
-        || /^(Arbeiten|Messen|Messung)\s/iu.test(n) || festeZeilen.has(lc(n).replace(/[.\s]+$/u, ''));
+        || /^(Arbeiten|Messen|Messung|Alle|Sämtliche)\s/iu.test(n) || /^\(.*\)\.?$/u.test(n)
+        || festeZeilen.has(lc(n).replace(/[.\s]+$/u, ''));
       // Fortsetzung: Vorzeile endet mit „:"/„," oder ist eine Liste mit „:" und diese Zeile ist
       // selbst eine Aufzählung (Komma) bzw. nur ein einzelner Eintrag („HGA").
       const offeneListe = vorher && !eigeneTaetigkeit && (/[:,]\s*$/.test(vorher)
-        || (aktionKopfRe.test(nv) && /:/.test(nv) && (/,/.test(s) || s.split(/\s+/).length <= 6)));
+        || (aktionKopfRe.test(nv) && /:/.test(nv) && (/,/.test(s) || s.split(/\s+/).length <= 2
+          || /^[\p{L}-]+\s\d+(?:\s(?:und|bis|u\.?|\+|&)\s?\d+)?$/iu.test(s.trim()))));
       // Begründung in eigener Zeile („Ausfall" / „Da keine Arbeiten möglich sind") gehört zum
       // kurzen, unvollständigen Satz davor.
       const begruendung = vorher && /^(da|weil|denn|wegen|aufgrund|daher|deshalb)\s/iu.test(s)
@@ -439,7 +473,12 @@ const Textkorrektur = (() => {
     for (const re of avlMinRe) {
       text = text.replace(re, (m, t, min) => { avl.push(avlZeile(t, minutenAlsStunden(min))); return ' '; });
     }
-    text = text.replace(/\(\s*\)/g, '').replace(/^[\s-–]+/gm, '').trim();
+    if (avl.length) {
+      // Reste der Angabe entfernen: „… Überlänge haben werden. AVL Zeiten" / „(, siehe E-Mail)"
+      text = text.replace(/(?<![\p{L}])AVL(?:[\s-]*Zeiten)?\s*:?(?=\s*(?:[.,;)]|$))/giu, ' ')
+        .replace(/\(\s*[,;]\s*/g, '(').replace(/\s*[,;]\s*\)/g, ')');
+    }
+    text = text.replace(/\(\s*\)/g, '').replace(/^[\s-–]+/gm, '').replace(/[ \t]{2,}/g, ' ').trim();
     return { text, avl };
   }
   // Zeile ohne AVL-Angabe (zum Zählen der Wörter: „3 Techniker a 40 Stunden Ausfall" -> „Ausfall")
