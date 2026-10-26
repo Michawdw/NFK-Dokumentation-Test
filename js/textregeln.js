@@ -109,6 +109,11 @@ const TEXTREGELN = {
     'thin client bo': 'Thin Client BO',
     'lbox': 'L-Box', 'l-box': 'L-Box',
     'lili': 'LILI', 'lily': 'LILI', 'lilly': 'LILI',
+    // Räume klein geschrieben („im serverraum", „im büro")
+    'serverraum': 'Serverraum', 'büro': 'Büro', 'kassenbüro': 'Kassenbüro', 'küche': 'Küche',
+    'aktenraum': 'Aktenraum', 'besprechungsraum': 'Besprechungsraum', 'technikraum': 'Technikraum',
+    'sozialraum': 'Sozialraum', 'technikebene': 'Technikebene', 'kleinverteiler': 'Kleinverteiler',
+    'headsetkanal': 'Headsetkanal', 'lager': 'Lager', 'umkleide': 'Umkleide',
     'wago': 'WAGO', 'mde geräte': 'MDE-Geräte', 'owa decken': 'OWA-Decken', 'owa-decken': 'OWA-Decken',
     'xweb': 'XWEB', 'x-web': 'XWEB',
     'pze': 'PZE', 'hga': 'HGA', 'cctv': 'CCTV', 'kwlan': 'KWLAN', 'kvm': 'KVM', 'mats': 'MAT', 'mat': 'MAT',
@@ -137,6 +142,10 @@ const TEXTREGELN = {
     // (sonst entstünde beim zweiten Korrigieren „Access Points (AP) (AP)")
     ['(?<![\\p{L}])Access Points(?!\\s*\\(AP\\))', 'Access Points (AP)'],
     ['(?<![\\p{L}(])KV(?![\\p{L})])', 'Kleinverteiler (KV)'],
+    // „vocovo 3und ,besprechung" -> „VoCoVo 3, Besprechungsraum": angeklebtes „und" lösen,
+    // „und" direkt vor einem Komma entfällt
+    ['(\\d)(und|u\\.)(?=[\\s,]|$)', '$1 und'],
+    ['\\s+und\\s*,\\s*', ', '],
     // „I.C.im" -> „I.C. im" (sonst entstünde „I.C..im")
     ['I\\.C\\.\\.?(?=\\p{L})', 'I.C. '],
     // „in denn Serverraum" -> „in den Serverraum"
@@ -312,21 +321,24 @@ const TEXTREGELN = {
 
   // ---- 8. AVL (nur Feld Behinderungen) ----
   avl: {
+    // Gruppe 1 = Techniker, Gruppe 2 = Stunden/Minuten, Gruppe 3 = optionaler Zeitraum
+    // („für die gesamte Woche", „für KW 46"), der in der AVL-Zeile erhalten bleibt.
+    // Komma nach „Techniker" erlaubt: „2 Techniker, je 120 Stunden".
     muster: [
       // „3 Techniker 8h", „3 Mann a 2,5 Stunden", „2 Man a 2 Stunden", „1 Techniker 1 Stunde"
-      '(\\d+)\\s*(?:Techniker|Mann|Man|MA|Mitarbeiter|Personen|Person)\\s*(?:à|á|a|je|jeweils|x|mit|für)?\\s*(\\d+(?:[.,]\\d+)?)\\s*(?:h|Std\\.?|Stunden|Stunde)(?![\\p{L}])',
+      '(\\d+)\\s*(?:Techniker|Mann|Man|MA|Mitarbeiter|Personen|Person)\\s*,?\\s*(?:à|á|a|je|jeweils|x|mit|für)?\\s*(\\d+(?:[.,]\\d+)?)\\s*(?:h|Std\\.?|Stunden|Stunde)(?![\\p{L}])(?:\\s+((?:für|in|während)\\s+(?:die\\s+|der\\s+|den\\s+)?(?:gesamte[nr]?\\s+|ganze[nr]?\\s+|komplette[nr]?\\s+)?(?:Woche|KW\\s*\\d+|Tag)))?',
       // „1x1,5h", „1x0,25h"
-      '(\\d+)\\s*[x×]\\s*(\\d+(?:[.,]\\d+)?)\\s*(?:h|Std\\.?|Stunden|Stunde)(?![\\p{L}])',
+      '(\\d+)\\s*[x×]\\s*(\\d+(?:[.,]\\d+)?)\\s*(?:h|Std\\.?|Stunden|Stunde)(?![\\p{L}])(?:\\s+((?:für|in|während)\\s+(?:die\\s+|der\\s+|den\\s+)?(?:gesamte[nr]?\\s+|ganze[nr]?\\s+|komplette[nr]?\\s+)?(?:Woche|KW\\s*\\d+|Tag)))?',
     ],
     // „1 Techniker 90 Minuten" -> Minuten werden in Stunden umgerechnet
     musterMinuten: [
-      '(\\d+)\\s*(?:Techniker|Mann|Man|MA|Mitarbeiter|Personen|Person)\\s*(?:à|á|a|je|jeweils|x|mit|für)?\\s*(\\d+)\\s*(?:min|Min\\.?|Minuten)(?![\\p{L}])',
-      '(\\d+)\\s*[x×]\\s*(\\d+)\\s*(?:min|Min\\.?|Minuten)(?![\\p{L}])',
+      '(\\d+)\\s*(?:Techniker|Mann|Man|MA|Mitarbeiter|Personen|Person)\\s*,?\\s*(?:à|á|a|je|jeweils|x|mit|für)?\\s*(\\d+)\\s*(?:min|Min\\.?|Minuten)(?![\\p{L}])(?:\\s+((?:für|in|während)\\s+(?:die\\s+|der\\s+|den\\s+)?(?:gesamte[nr]?\\s+|ganze[nr]?\\s+|komplette[nr]?\\s+)?(?:Woche|KW\\s*\\d+|Tag)))?',
+      '(\\d+)\\s*[x×]\\s*(\\d+)\\s*(?:min|Min\\.?|Minuten)(?![\\p{L}])(?:\\s+((?:für|in|während)\\s+(?:die\\s+|der\\s+|den\\s+)?(?:gesamte[nr]?\\s+|ganze[nr]?\\s+|komplette[nr]?\\s+)?(?:Woche|KW\\s*\\d+|Tag)))?',
     ],
     // Techniker genannt, aber keine Stunden -> Hinweis
     ohneStunden: '(\\d+)\\s*(?:Techniker|Mann|Man|Mitarbeiter|Personen|Person)(?![\\p{L}])',
-    format: 'AVL: {t} Techniker, jeweils {h}.',
-    formatEinTechniker: 'AVL: 1 Techniker, {h}.',
+    format: 'AVL: {t} Techniker, jeweils {h}{z}.',
+    formatEinTechniker: 'AVL: 1 Techniker, {h}{z}.',
   },
   bbaSatz: 'Die Gründe sind der Baubehinderungsanzeige zu entnehmen.',
   bbaVerweis: '\\(?\\s*(?:siehe|sie|s\\.)\\s+(?:Baubehinderungsanzeige|BBA|Behinderungsanzeige)\\s*\\)?',

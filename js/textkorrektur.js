@@ -320,6 +320,22 @@ const Textkorrektur = (() => {
     return `${wort}${obj ? ' ' + obj : ''} ${st.status}.`;
   }
 
+  // „begonnen die Datenleitungen im Serverraum zu sortieren" / „Datenleitungen zu sortieren
+  // angefangen" -> „Mit dem Sortieren der Datenleitungen im Serverraum begonnen."
+  function vorlageBeginn(zeile) {
+    let m = zeile.match(/^(?:begonnen|angefangen)(?:\s+mit)?\s+(.+?)\s+zu\s+(\p{L}+en)$/iu);
+    let objekt, verb;
+    if (m) { objekt = m[1]; verb = m[2]; } else {
+      m = zeile.match(/^(.+?)\s+zu\s+(\p{L}+en)\s+(?:begonnen|angefangen)$/iu);
+      if (!m) return null;
+      objekt = m[1]; verb = m[2];
+    }
+    // Objekt in den Genitiv: „die Datenleitungen …" -> „der Datenleitungen …", ohne Artikel „von …"
+    if (/^die\s/iu.test(objekt)) objekt = 'der ' + objekt.replace(/^die\s+/iu, '');
+    else if (!/^(der|des|dem|den|das)\s/iu.test(objekt)) objekt = 'von ' + objekt;
+    return `Mit dem ${ersterGross(lc(verb))} ${objekt} begonnen.`;
+  }
+
   function vorlage(zeile) {
     const ohnePunkt = zeile.replace(/[.\s]+$/u, '');
     // Schon fertiger Satz (endet auf „durchgeführt", „montiert" …): nicht noch einmal umbauen.
@@ -331,7 +347,7 @@ const Textkorrektur = (() => {
     if (finitRe.test(ohnePunkt)) return null;
     const fest = festeZeilen.get(lc(ohnePunkt).replace(/\s+/g, ' '));
     if (fest) return fest;
-    return vorlageAktion(ohnePunkt) || vorlageHauptwort(ohnePunkt);
+    return vorlageBeginn(ohnePunkt) || vorlageAktion(ohnePunkt) || vorlageHauptwort(ohnePunkt);
   }
 
   // Zeile mit „+" zwischen zwei eigenständigen Tätigkeiten („Auto entladen + Parkplatzsuche")
@@ -361,7 +377,7 @@ const Textkorrektur = (() => {
       const p = m && R.infinitive[lc(m[1])];
       // „beim ablängen" ist ein Hauptwort, kein Infinitiv am Satzende
       const davor = s.slice(0, m ? m.index : 0).trim().split(/\s+/).pop() || '';
-      if (p && s.split(/\s+/).length > 1 && !/^(beim|zum|vom|am|im|das|dem)$/iu.test(davor)) {
+      if (p && s.split(/\s+/).length > 1 && !/^(beim|zum|vom|am|im|das|dem|zu)$/iu.test(davor)) {
         s = s.slice(0, m.index) + p;
       }
       s = plusAlsSowie(s);
@@ -459,8 +475,10 @@ const Textkorrektur = (() => {
     const v = h.replace('.', ',');
     return v === '1' ? '1 Stunde' : `${v} Stunden`;
   }
-  function avlZeile(t, h) {
-    return (+t === 1 ? R.avl.formatEinTechniker : R.avl.format).replace('{t}', t).replace('{h}', stunden(h));
+  // zeitraum: optionaler Zusatz des Technikers („für die gesamte Woche") – bleibt erhalten
+  function avlZeile(t, h, zeitraum) {
+    return (+t === 1 ? R.avl.formatEinTechniker : R.avl.format).replace('{t}', t)
+      .replace('{h}', stunden(h)).replace('{z}', zeitraum ? ' ' + zeitraum.replace(/\s+/g, ' ') : '');
   }
   // Minuten -> Stunden mit Komma („90" -> „1,5")
   const minutenAlsStunden = (min) => String(Math.round((+min / 60) * 100) / 100).replace('.', ',');
@@ -468,10 +486,10 @@ const Textkorrektur = (() => {
   function avlHerausloesen(text) {
     const avl = [];
     for (const re of avlRe) {
-      text = text.replace(re, (m, t, h) => { avl.push(avlZeile(t, h)); return ' '; });
+      text = text.replace(re, (m, t, h, z) => { avl.push(avlZeile(t, h, z)); return ' '; });
     }
     for (const re of avlMinRe) {
-      text = text.replace(re, (m, t, min) => { avl.push(avlZeile(t, minutenAlsStunden(min))); return ' '; });
+      text = text.replace(re, (m, t, min, z) => { avl.push(avlZeile(t, minutenAlsStunden(min), z)); return ' '; });
     }
     if (avl.length) {
       // Reste der Angabe entfernen: „… Überlänge haben werden. AVL Zeiten" / „(, siehe E-Mail)"
@@ -505,6 +523,8 @@ const Textkorrektur = (() => {
       let z = zeile;
       // AVL steht direkt unter der zugehörigen Beschreibung (Spec §34, §42)
       let avl = [];
+      // Bereits fertige AVL-Zeile („AVL: 3 Techniker, jeweils 5 Stunden.") nicht erneut zerlegen
+      if (/^AVL:\s\d+\sTechniker,\s(?:jeweils\s)?\d/u.test(z.trim())) { saetze.push(satzbau(z.trim())); continue; }
       if (feld === 'behinderungen') {
         const r = avlHerausloesen(z);
         z = r.text; avl = r.avl; avlGesamt += avl.length;
