@@ -77,6 +77,10 @@ const Textkorrektur = (() => {
   const genitivKeys = Object.keys(R.genitiv).sort((a, b) => b.length - a.length);
   const aktionsObjektKeys = Object.keys(R.aktionsObjekte).sort((a, b) => b.length - a.length);
   const ohneZusatz = new Set(R.hauptwoerterOhneZusatz.map(lc));
+  const hauptwortSet = new Set(R.hauptwoerter.map(lc));
+  const partizipAlt = [...new Set([...Object.values(R.partizipien), ...Object.values(R.infinitive)]
+    .filter((p) => !/\s/.test(p)))].map(esc).join('|');
+  const partizipKetteRe = new RegExp(`(?<![${BUCHST}])(${partizipAlt})\\s+(?=(?:${partizipAlt})(?![${BUCHST}]))`, 'giu');
   const listenEintraege = R.listenEintraege;
   const artikelRe = /^(der|des|den|dem|die|das|von|vom|aller|sämtlicher|im|in|am|an|zur|zum|für|mit)\s/iu;
   const ab = R.abstimmung;
@@ -135,8 +139,14 @@ const Textkorrektur = (() => {
     s = s.replace(/\s*\+\s*/g, ', ').replace(/^[:\s]+|[,.\s]+$/g, '');
     s = s.replace(/^\((.*)\)$/, '$1');
     let teile = s.split(/,\s*/).filter(Boolean).map((t) => {
+      // „Verkauf (komplett)" -> „Verkaufsbereich" (Stil der abgegebenen Bautagebücher)
+      t = t.replace(/\s*\(\s*(?:komplett|vollständig)\s*\)/iu, '');
       const key = lc(t).replace(/\s+/g, ' ');
-      return listenEintraege[key] || t;
+      if (listenEintraege[key]) return listenEintraege[key];
+      // „einbau der Leerpanels" -> „Einbau …", einzelnes „Paneltechnisch" -> „paneltechnisch"
+      if (hauptwortSet.has(lc(t.split(' ')[0]))) return ersterGross(t);
+      if (/^\p{L}+isch$/u.test(t)) return lc(t);
+      return t;
     });
     // Nackte Nummern gehören zum Eintrag davor: „VoCoVo 1", „2", „3" -> „VoCoVo 1, 2 und 3"
     const gruppen = [];
@@ -306,6 +316,14 @@ const Textkorrektur = (() => {
     m = zeile.match(hauptwortRe);
     if (!m) return null;
     const wort = R.hauptwortAlias[lc(m[1])] || ersterGross(lc(m[1]));
+    // „Beginn mit Montage der Lautsprecher" -> „Mit der Montage der Lautsprecher begonnen."
+    const bg = lc(m[1]) === 'beginn' && m[2].match(/^mit\s+(?:(der|dem|den)\s+)?(\p{L}+)(.*)$/iu);
+    if (bg) {
+      const nomen = ersterGross(bg[2]);
+      const art = bg[1] ? lc(bg[1]) : /(ungen|arbeiten)$/iu.test(nomen) ? 'den'
+        : /(ung|age|ion|ahme|e|heit|keit|schaft)$/iu.test(nomen) ? 'der' : 'dem';
+      return `Mit ${art} ${nomen}${bg[3]} begonnen.`;
+    }
     // „Weiterführung des Ausbaus …" bleibt ein Satz ohne „durchgeführt"
     if (ohneZusatz.has(lc(m[1]))) return m[2] ? `${wort} ${genitiv(plusAlsSowie(m[2]))}.` : null;
     const st = statusAbtrennen(m[2]);
@@ -359,6 +377,8 @@ const Textkorrektur = (() => {
     if (teile.length > 1) {
       const saetze = teile.map((t) => vorlage(t.trim()));
       if (saetze.every(Boolean)) return saetze.join(' ');
+      const zusatz = teile.slice(1).map((t) => (R.zusatzTaetigkeiten || {})[lc(t.trim()).replace(/\s+/g, ' ')]);
+      if (saetze[0] && zusatz.every(Boolean)) return `${saetze[0].replace(/\.$/u, '')} sowie ${undListe(zusatz)}.`;
     }
     // „Werkzeug ausladen und Parkplatzsuche": nur trennen, wenn jeder Teil ein fester Satz ist
     const undTeile = zeile.replace(/[.\s]+$/u, '').split(/\s+und\s+/iu);
@@ -367,6 +387,25 @@ const Textkorrektur = (() => {
       if (saetze.every(Boolean)) return saetze.join(' ');
     }
     return vorlage(zeile);
+  }
+
+  // Erläuterung in Klammern am Zeilenende („Messen der Datenports (die mit der Leiter möglich
+  // waren)") wird für die Vorlage abgetrennt – sonst verhindert ihr Verb („waren") die Vorlage
+  // und ihr „+" zerlegt die Zeile. Abkürzungen wie „(NWS)" bleiben stehen.
+  function klammerAbtrennen(s) {
+    const m = s.match(/^(.*[^\s(])\s*\(([^()]*)\)\s*\.?$/u);
+    if (!m || !/\p{Ll}/u.test(m[2]) || !/\s/.test(m[2].trim())) return { kern: s, klammer: '' };
+    return { kern: m[1], klammer: plusAlsSowie(m[2].trim()) };
+  }
+  // Klammer vor das Schlussverb setzen („… der Datenports (…) durchgeführt."); ohne Schlussverb
+  // ans Satzende, direkt nach einer Abkürzung („(NWS)") mit Doppelpunkt statt zweiter Klammer.
+  function klammerEinsetzen(satz, klammer) {
+    const s = satz.replace(/\.$/u, '');
+    const v = s.match(/\s+(?:(?:vollständig|neu)\s+)?(?:in Betrieb\s+)?(\p{L}+)$/u);
+    if (v && (fertigRe.test(v[1]) || Object.values(R.status).includes(v[1]))) {
+      return `${s.slice(0, v.index)} (${klammer})${s.slice(v.index)}.`;
+    }
+    return /\([\p{Lu}.\d]+\)$/u.test(s) ? `${s}: ${klammer}.` : `${s} (${klammer}).`;
   }
 
   // Satz ohne Vorlage: Grundform am Ende -> Partizip, sonst nur Satzbau.
@@ -381,6 +420,8 @@ const Textkorrektur = (() => {
         s = s.slice(0, m.index) + p;
       }
       s = plusAlsSowie(s);
+      // „eingebracht aufgestellt und ausgerichtet" -> „eingebracht, aufgestellt und ausgerichtet"
+      s = s.replace(partizipKetteRe, '$1, ');
     }
     return s;
   }
@@ -539,7 +580,9 @@ const Textkorrektur = (() => {
 
       const n = normalisiere(z);
       if (n !== satzzeichen(z)) regeln.add('Schreibweisen und Fachbegriffe');
-      let satz = vorlageMitPlus(n);
+      const kl = klammerAbtrennen(n);
+      let satz = vorlageMitPlus(kl.kern);
+      if (satz && kl.klammer) satz = klammerEinsetzen(satz, kl.klammer);
       // Regex-Regeln auch auf den neu gebauten Satz anwenden („für gesamter …", „der NWS"),
       // damit ein zweiter Durchlauf nichts mehr ändert.
       if (satz) { for (const [re, ers] of regexRegeln) satz = satz.replace(re, ers); }

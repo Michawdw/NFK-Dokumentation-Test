@@ -126,6 +126,9 @@ const TEXTREGELN = {
     'verkaufsraum': 'Verkaufsbereich', 'verkauf': 'Verkaufsbereich',
     'perso': 'Personalraum',
     'bilddoku': 'Fotodokumentation', 'fotodoku': 'Fotodokumentation',
+    // Hauptwörter, die oft klein getippt werden
+    'leiter': 'Leiter', 'kabelweg': 'Kabelweg', 'kabelwegs': 'Kabelwegs', 'kabelweges': 'Kabelweges',
+    'kabelwege': 'Kabelwege', 'leerpanels': 'Leerpanels', 'erdungsfahnen': 'Erdungsfahnen',
   },
 
   // ---- 3. Regex-Ersetzungen nach den Begriffen (Reihenfolge ist wichtig) ----
@@ -152,6 +155,14 @@ const TEXTREGELN = {
     ['(?<![\\p{L}])(in|für|auf|an|über) denn (?=\\p{Lu})', '$1 den '],
     // „IC1", „IC 2" -> „I.C. 1"
     ['(?<![\\p{L}.])IC\\s*(?=\\d)', 'I.C. '],
+    // „NWS in den Serverraum …" am Zeilenanfang ausschreiben (nicht „NWS 1")
+    ['^NWS(?=\\s+(?!\\d))', 'Netzwerkschränke (NWS)'],
+    // „in den Serverraum gebracht" -> „in den Serverraum eingebracht"
+    ['((?<![\\p{L}])in (?:den|die|das) [\\p{L}-]+) gebracht(?![\\p{L}])', '$1 eingebracht'],
+    // „I.C. Brücken" -> „I.C.-Brücken" (zusammengesetztes Wort)
+    ['I\\.C\\.\\s+(?=Brücke)', 'I.C.-'],
+    // „(die mit der Leiter möglich waren)" -> „(soweit mit der Leiter erreichbar)"
+    ['\\(\\s*die\\s+mit\\s+der\\s+Leiter\\s+(?:möglich|erreichbar)\\s+waren\\s*\\)', '(soweit mit der Leiter erreichbar)'],
     // „Besprechung 1+2" ist der Raum, „Besprechung mit …" nicht
     ['(?<![\\p{L}])Besprechung(?=\\s*\\d|\\s*[,.)]|\\s*$)', 'Besprechungsraum'],
     // AP mit Nummer: „AP10", „Ap 10" -> „AP 10"
@@ -174,6 +185,15 @@ const TEXTREGELN = {
     'verlegen': 'verlegt', 'endverlegen': 'endverlegt', 'umverlegen': 'umverlegt', 'ablängen': 'abgelängt',
     'beschriften': 'beschriftet', 'reinigen': 'gereinigt', 'säubern': 'gesäubert', 'stellen': 'gestellt',
     'aufstellen': 'aufgestellt', 'einführen': 'eingeführt', 'sortieren': 'sortiert', 'prüfen': 'geprüft',
+    'ausrichten': 'ausgerichtet', 'einbringen': 'eingebracht',
+  },
+
+  // Kurze Zusätze hinter „+", die keine eigene Tätigkeit nennen („Ablängen Transferkabel +
+  // einseitig Module") -> „Ablängen der Transferkabel durchgeführt sowie einseitig Module montiert."
+  zusatzTaetigkeiten: {
+    'einseitig module': 'einseitig Module montiert', 'module einseitig': 'einseitig Module montiert',
+    'beidseitig module': 'beidseitig Module montiert', 'module beidseitig': 'beidseitig Module montiert',
+    'module': 'Module montiert',
   },
 
   // Wörter, an die eine Nummer ohne Leerzeichen angehängt sein kann („Kassen1-5").
@@ -260,7 +280,7 @@ const TEXTREGELN = {
     'Sortieren', 'Einführen', 'Auflegen', 'Aufteilen', 'Abschellen', 'Stellen', 'Vorbereitung',
     'Kontrolle', 'Reinigung', 'Zurücksetzen', 'Versuch', 'Austausch', 'Tausch', 'Prüfung', 'Beschriftung',
     'Baustellenbegehung', 'Beginn', 'Konfiguration', 'Verbinden', 'Bereinigung', 'Patchen', 'Fehlersuche',
-    'Querungen'],
+    'Querungen', 'Hereinbringen', 'Reinbringen', 'Einbringen'],
   // Abweichende Ausgabe für ein Hauptwort („Patchen der NWS" -> „Patchung der …")
   hauptwortAlias: { 'patchen': 'Patchung' },
   // Kurzer Partizip-Stil (Stil der neueren Bautagebücher, mit Michael abgestimmt):
@@ -274,6 +294,7 @@ const TEXTREGELN = {
     'annahme': 'entgegengenommen', 'sortieren': 'sortiert', 'einführen': 'eingeführt', 'auflegen': 'aufgelegt',
     'aufteilen': 'aufgeteilt', 'abschellen': 'abgeschellt', 'stellen': 'aufgestellt', 'reinigung': 'gereinigt',
     'austausch': 'ausgetauscht', 'tausch': 'getauscht', 'kontrolle': 'kontrolliert', 'vorbereitung': 'vorbereitet',
+    'hereinbringen': 'hereingebracht', 'reinbringen': 'hereingebracht', 'einbringen': 'eingebracht',
   },
   // Mehrere „AP n" in einer Liste -> „Access Points (AP) 1, 2 und 4"; erste Einzelnennung im
   // Feld -> „Access Point (AP) 12".
