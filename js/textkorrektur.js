@@ -547,6 +547,24 @@ const Textkorrektur = (() => {
   }
   const enthaeltAvl =(s) => [...avlRe, ...avlMinRe].some((re) => { re.lastIndex = 0; const t = re.test(s); re.lastIndex = 0; return t; });
 
+  // ---------------- Korrekturspeicher ----------------
+  // Satzpaare aus js/korrekturspeicher.js (gepflegt im AVL-Tool, Reiter „Bautagebuch-Texte").
+  // Der Speicher wird bei jedem Aufruf aus globalThis gelesen: Das AVL-Tool legt dort vor der
+  // Korrektur seinen aktuelleren Stand (Netzlaufwerk) ab.
+  // Schlüssel = Zeile klein, Leerraum zusammengefasst, ohne Satzzeichen am Ende.
+  const schluessel = (s) => lc(String(s || '')).replace(/\s+/g, ' ').trim().replace(/[\s.,;:!?]+$/u, '');
+  function speicherFuer(feld) {
+    const g = typeof globalThis !== 'undefined' ? globalThis : window;
+    const roh = (g.KORREKTURSPEICHER && g.KORREKTURSPEICHER[feld]) || {};
+    const eintraege = {};
+    const werte = new Map(); // schon korrigierte Zeile -> ihre gespeicherte Schreibweise
+    for (const [k, v] of Object.entries(roh)) {
+      eintraege[schluessel(k)] = v;
+      String(v).split('\n').forEach((w) => { if (w.trim()) werte.set(schluessel(w), w.trim()); });
+    }
+    return { eintraege, werte };
+  }
+
   // ---------------- Hauptfunktion ----------------
   function korrigiere(text, feld) {
     const regeln = new Set();
@@ -559,24 +577,42 @@ const Textkorrektur = (() => {
     }
 
     const saetze = [];
+    const zeilen = [];
     let avlGesamt = 0;
-    for (const zeile of zeilenVorbereiten(text)) {
+    const speicher = speicherFuer(feld);
+    // Eine vorbereitete Zeile verarbeiten; Rückgabe = Quelle des Ergebnisses
+    // ('speicher' = Korrekturspeicher, 'regel' = Standardsatz/feste Form, 'frei' = nur bereinigt).
+    const verarbeite = (zeile) => {
       let z = zeile;
+      // Korrekturspeicher hat Vorrang vor allen Regeln (nur exakter Treffer). Eine Zeile, die
+      // selbst schon eine gespeicherte Korrektur ist, bleibt unverändert (zweiter Lauf).
+      const k = schluessel(z);
+      if (speicher.eintraege[k] != null || speicher.werte.has(k)) {
+        const wert = speicher.eintraege[k] != null ? speicher.eintraege[k] : speicher.werte.get(k);
+        const gemerkt = String(wert).split('\n').map((s) => s.trim()).filter(Boolean);
+        // AVL-Zeilen aus dem Merkzettel zählen als erkannte AVL-Angabe (sonst Fehlalarm
+        // „Techniker genannt, aber keine Stunden erkannt")
+        avlGesamt += gemerkt.filter((s) => /^AVL:\s\d+\sTechniker,\s(?:jeweils\s)?\d/u.test(s)).length;
+        saetze.push(...gemerkt);
+        regeln.add('Korrekturspeicher');
+        return 'speicher';
+      }
       // AVL steht direkt unter der zugehörigen Beschreibung (Spec §34, §42)
       let avl = [];
       // Bereits fertige AVL-Zeile („AVL: 3 Techniker, jeweils 5 Stunden.") nicht erneut zerlegen
-      if (/^AVL:\s\d+\sTechniker,\s(?:jeweils\s)?\d/u.test(z.trim())) { saetze.push(satzbau(z.trim())); continue; }
+      // (zählt als erkannte AVL-Angabe – sonst käme „Techniker genannt, aber keine Stunden erkannt")
+      if (/^AVL:\s\d+\sTechniker,\s(?:jeweils\s)?\d/u.test(z.trim())) { saetze.push(satzbau(z.trim())); avlGesamt++; return 'regel'; }
       if (feld === 'behinderungen') {
         const r = avlHerausloesen(z);
         z = r.text; avl = r.avl; avlGesamt += avl.length;
         if (avl.length) regeln.add('AVL-Angabe vereinheitlicht');
-        if (!z) { saetze.push(...avl); continue; }
+        if (!z) { saetze.push(...avl); return 'regel'; }
       }
       let bba = false;
       bbaRe.lastIndex = 0;
       if (bbaRe.test(z)) { bba = true; z = z.replace(bbaRe, ' ').trim(); }
       bbaRe.lastIndex = 0;
-      if (!z) { if (bba) saetze.push(R.bbaSatz); saetze.push(...avl); continue; }
+      if (!z) { if (bba) saetze.push(R.bbaSatz); saetze.push(...avl); return 'regel'; }
 
       const n = normalisiere(z);
       if (n !== satzzeichen(z)) regeln.add('Schreibweisen und Fachbegriffe');
@@ -586,8 +622,9 @@ const Textkorrektur = (() => {
       // Regex-Regeln auch auf den neu gebauten Satz anwenden („für gesamter …", „der NWS"),
       // damit ein zweiter Durchlauf nichts mehr ändert.
       if (satz) { for (const [re, ers] of regexRegeln) satz = satz.replace(re, ers); }
+      let quelle = 'regel';
       if (satz) regeln.add('Standardformulierung');
-      else { satz = freierSatz(n); freieZeilen++; }
+      else { satz = freierSatz(n); freieZeilen++; quelle = 'frei'; }
       satz = satzbau(satz);
       if (bba) {
         satz += ' ' + R.bbaSatz;
@@ -597,6 +634,12 @@ const Textkorrektur = (() => {
       // Doppelt eingetragene Zeile („Ankunft Baustelle" + „Ankunft auf der Baustelle.") nur einmal
       if (satz !== saetze[saetze.length - 1]) saetze.push(satz);
       saetze.push(...avl);
+      return quelle;
+    };
+    for (const zeile of zeilenVorbereiten(text)) {
+      const start = saetze.length;
+      const quelle = verarbeite(zeile);
+      zeilen.push({ original: zeile, ergebnis: saetze.slice(start).join('\n'), quelle });
     }
 
     if (feld === 'behinderungen' && !avlGesamt && avlOhneStundenRe.test(text)) {
@@ -618,8 +661,8 @@ const Textkorrektur = (() => {
         ergebnis = ergebnis.slice(0, bar.index) + neu + ergebnis.slice(bar.index + bar[0].length);
       }
     }
-    return { text: ergebnis, regeln: [...regeln], hinweise, freieZeilen };
+    return { text: ergebnis, regeln: [...regeln], hinweise, freieZeilen, zeilen };
   }
 
-  return { korrigiere };
+  return { korrigiere, schluessel };
 })();

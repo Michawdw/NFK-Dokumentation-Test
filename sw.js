@@ -1,6 +1,6 @@
 /* Service Worker – Precache der App-Shell für vollständigen Offline-Betrieb.
    Cache-Version bei jeder Änderung der Asset-Liste erhöhen. */
-const CACHE = 'nfk-doku-v81.2';
+const CACHE = 'nfk-doku-v81.4';
 
 const ASSETS = [
   './',
@@ -23,6 +23,7 @@ const ASSETS = [
   './js/wochenbericht.js',
   './js/namen.js',
   './js/textregeln.js',
+  './js/korrekturspeicher.js',
   './js/textkorrektur.js',
   './lib/jszip.min.js',
   './lib/exceljs.min.js',
