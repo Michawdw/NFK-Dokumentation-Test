@@ -738,6 +738,13 @@ textarea.wb-notiztext { min-height: 66px; }
 .pop { animation: pop 360ms var(--ease); }
 @keyframes pop { 0% { transform: scale(.6); opacity: 0; } 60% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); } }
 .grp-check, .row-check { display: inline-block; }
+/* Eigener Name gerade angelegt: kurz hervorheben, damit man ihn in der Liste findet */
+.name-row.neu-angelegt { animation: neu-angelegt 2600ms var(--ease); }
+@keyframes neu-angelegt {
+  0%, 60% { box-shadow: 0 0 0 3px var(--brand-light); background: #eef4ff; }
+  100% { box-shadow: none; }
+}
+#modalBody input.invalid { border-color: var(--warn); background: #fdecea; }
 
 /* ---------- Namensliste ---------- */
 .namen-liste:not([hidden]) { animation: fade-in var(--dur-fast) var(--ease); }

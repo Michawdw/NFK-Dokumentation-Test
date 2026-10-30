@@ -259,11 +259,20 @@ const App = (() => {
     openOverlay(overlay);
     $('#modalCancel').onclick = () => { closeOverlay(overlay); };
     $('#modalClose').onclick = () => { closeOverlay(overlay); }; // ✕ = Abbrechen
-    $('#modalOk').onclick = () => {
-      const data = {};
-      $$('#modalBody [name]').forEach((el) => { data[el.name] = el.value.trim(); });
-      const ok = onSubmit(data);
-      if (ok !== false) closeOverlay(overlay);
+    // onSubmit ist meist async: erst das Ergebnis abwarten. Vorher war es ein Promise und nie
+    // `false` – der Dialog schloss auch bei fehlender Pflichtangabe, die Eingaben waren weg.
+    let laeuft = false;
+    $('#modalOk').onclick = async () => {
+      if (laeuft) return;                  // Doppel-Tippen legt nichts doppelt an
+      laeuft = true;
+      try {
+        const data = {};
+        $$('#modalBody [name]').forEach((el) => { data[el.name] = el.value.trim(); });
+        const ok = await onSubmit(data);
+        if (ok !== false) closeOverlay(overlay);
+      } finally {
+        laeuft = false;
+      }
     };
   }
 
@@ -1327,6 +1336,7 @@ const App = (() => {
     const row = document.createElement('div');
     row.className = 'name-row' + (n.done ? ' done' : '') + (n.skipped ? ' skipped' : '')
       + (origin ? ' origin-' + origin.cls : '');
+    row.dataset.key = n.key;
     const nodeSkip = (skipSet('nodes')).includes(n.key);
     let statusLine;
     if (n.skipped) {
@@ -1495,7 +1505,14 @@ const App = (() => {
       let ober = data.oberSelect === '__new__' ? (data.oberNew || '').trim() : data.oberSelect;
       const bildname = (data.bildname || '').trim();
       if (!ober) ober = 'Allgemein';
-      if (!bildname) { toast('Bildname fehlt'); return false; }
+      if (!bildname) {
+        // Dialog bleibt offen; Feld markieren, damit man sieht, was fehlt
+        const feld = $('[name="bildname"]', $('#modalBody'));
+        feld.classList.add('invalid');
+        feld.focus();
+        toast('Bitte einen Bildnamen eintragen');
+        return false;
+      }
       const unter = data.unterSelect === '__new__' ? ((data.unterNew || '').trim() || null)
         : data.unterSelect === '__none__' ? null : data.unterSelect;
       let pflicht = parseInt(data.pflicht, 10);
@@ -1505,7 +1522,19 @@ const App = (() => {
         ober, unter, bildname, pflicht, source: 'custom',
       };
       await Structure.addCustomName(node);
+      // Den neuen Namen zeigen: Bereich (und Unterordner) aufklappen, hinscrollen, kurz
+      // hervorheben. Sonst steht er unsichtbar am Ende eines zugeklappten Ordners.
+      expandedObers.clear();
+      expandedUnters.clear();
+      expandedObers.add(ober);
+      if (unter) expandedUnters.add(ober + Structure.SEP + unter);
       await renderTree();
+      const zeile = $$('#structureTree .name-row').find((r) => r.dataset.key === node.key);
+      if (zeile) {
+        zeile.scrollIntoView({ block: 'center', behavior: reduceMotion.matches ? 'auto' : 'smooth' });
+        zeile.classList.add('neu-angelegt');
+        setTimeout(() => zeile.classList.remove('neu-angelegt'), 2600);
+      }
       toast('Name angelegt');
     });
 
@@ -1528,6 +1557,7 @@ const App = (() => {
       aktualisieren();
       if (unterSel.value === '__new__') $('[name="unterNew"]', body).focus();
     });
+    $('[name="bildname"]', body).addEventListener('input', (e) => e.target.classList.remove('invalid'));
     aktualisieren();
   }
 
@@ -2159,7 +2189,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v81.4'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
+  const APP_VERSION = 'v81.5'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
