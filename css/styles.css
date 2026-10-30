@@ -605,6 +605,39 @@ textarea.wb-notiztext { min-height: 66px; }
 }
 .wb-notiz { margin-top: 10px; }
 
+/* Baufortschritt (ab v82): Kasten oben, Gewerk-Karten mit Bereichszeilen. */
+.wb-fs { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 0 0 12px; }
+.wb-fs[hidden] { display: none; }
+.wb-fs-titel { font-weight: 800; color: var(--brand); margin-bottom: 6px; }
+.wb-fs-row {
+  display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; width: 100%; text-align: left;
+  background: none; border: none; border-top: 1px solid var(--line); padding: 8px 0; cursor: pointer; color: var(--text);
+  font: inherit;
+}
+.wb-fs-row:first-of-type { border-top: none; }
+.wb-fs-name { font-weight: 700; font-size: 15px; }
+.wb-fs-text { font-size: 14px; font-weight: 700; text-align: right; color: var(--muted); }
+.wb-fs-row.gruen .wb-fs-text { color: var(--ok); }
+.wb-fs-row.gelb .wb-fs-text { color: #a86c00; }
+.wb-fs-row.rot .wb-fs-text { color: var(--warn); }
+.wb-fs-row .wb-fs-bar { grid-column: 1 / -1; }
+.wb-fs-bar { display: flex; height: 10px; border-radius: 5px; background: #dde2e7; overflow: hidden; }
+.wb-fs-bar i { display: block; height: 100%; }
+.wb-fs-bar i.f { background: var(--ok); }
+.wb-fs-bar i.t { background: #e0a100; }
+.wb-fs-mini { margin-top: 10px; font-size: 14px; font-weight: 700; color: var(--muted); }
+.wb-fs-mini .wb-fs-bar { margin-top: 4px; }
+.wb-bereiche { margin-top: 12px; }
+.wb-schrank { font-weight: 800; color: var(--brand); margin: 12px 0 4px; }
+.wb-bereich { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; background: #fff; }
+.wb-bereich.pruefen { border-color: #d98c00; box-shadow: 0 0 0 2px rgba(217,140,0,.18); }
+.wb-bname { font-weight: 700; font-size: 15px; margin-bottom: 6px; }
+.wb-bereich .vp-seg { gap: 6px; }
+.wb-bereich .vp-seg .vp-opt { font-size: 13px; padding: 4px 2px; min-height: 40px; line-height: 1.15; }
+.wb-pruefen { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; color: #a86c00; font-weight: 600; }
+.wb-pruefen span { flex: 1 1 160px; }
+.wb-bereiche > .vp-seg { margin-bottom: 4px; }
+
 /* ---------- Baubehinderungsanzeige ---------- */
 /* Adressblock als abgesetzte Gruppe, damit Absender/Empfänger nicht mit den
    übrigen Formularfeldern verschwimmen. */

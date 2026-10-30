@@ -180,7 +180,7 @@ const ExportZip = (() => {
     // des Wochenberichts nach f6 um) behalten einen lesbaren Ordnernamen.
     const titel = new Map([['d2-nws', 'Fortschritt NWS'], ['d2-ibn', 'Fortschritt Inbetriebnahme'],
       ['d2-server', 'Fortschritt Serverschränke']]);
-    for (const s of Wochenbericht.ABSCHNITTE) {
+    for (const s of [...Wochenbericht.ABSCHNITTE_V1, ...Wochenbericht.ABSCHNITTE]) {
       for (const p of s.punkte) {
         titel.set(p.id, p.titel);
         for (const g of (p.gruppen || [])) titel.set(p.id + '-' + g.id, 'Fortschritt ' + g.label);

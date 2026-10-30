@@ -11,10 +11,16 @@
    bleiben die Berichte beim Team (keine Übergabe); ihre Fotos stecken aber im ZIP-Export.
 
    Daten liegen am Job-Objekt (kein DB-Schema-Bump):
-     job.wochenberichte = [ { id, kw:'2026-W41', gespraechspartner,
+     job.wochenberichte = [ { id, kw:'2026-W41', gespraechspartner, katalog, vor,
                               antworten: { <pid>: { status, text, notiz, nichts,
-                                                    unter: { status, text } } },
+                                                    unter: { status, text },
+                                                    bereiche: { <uid>: { status, text, bestaetigt } },
+                                                    anzahl } },
                               erstelltAm, updatedAt, exportiertAm } ]
+   katalog: 2 ab v82 (Baufortschritt nach Bereichen, ABSCHNITTE); fehlt das Feld, ist es ein
+   älterer Bericht mit dem alten Fragenkatalog (ABSCHNITTE_V1), der unverändert so bleibt.
+   Ein neuer Bericht übernimmt den Fortschritt (Punkte vom Typ 'fortschritt') aus dem letzten
+   Bericht mit katalog 2; vor = { <pid>: status } hält den übernommenen Gewerksstatus fest.
    Fotos liegen im photos-Store unter '__wochenbericht__<id>__<pid>' (Fortschrittsbilder:
    '<pid>' = 'd2-<gruppe>'), Feld kind:'wochenbericht', caption. Das führende '__' hält
    sie aus Bilddoku, Zählern und Sicherungs-Erinnerung heraus (DB.isBilddokuPhoto).
@@ -43,7 +49,8 @@ const Wochenbericht = (() => {
     { v: 'nein', label: 'Nein', ampel: 'rot' },
   ];
 
-  const ABSCHNITTE = [
+  // Alter Fragenkatalog (bis v81) – bleibt für die damals angelegten Berichte erhalten.
+  const ABSCHNITTE_V1 = [
     { id: 's1', titel: 'Behinderungen', punkte: [
       { id: 'b1', typ: 'wahl', titel: 'Bestehende Behinderungen', optionen: [
         { v: 'ja', label: 'Ja', ampel: 'rot',
@@ -142,10 +149,56 @@ const Wochenbericht = (() => {
       ] },
     ] },
   ];
-  const ALLE_PUNKTE = ABSCHNITTE.flatMap((s) => s.punkte);
+  // Ab v82 (katalog 2): Kabelzug, Datendosen, Netzwerkschränke und Inbetriebnahme als
+  // Gewerke vom Typ 'fortschritt'. Je Gewerk „noch nicht begonnen / teilweise / fertig“;
+  // nur bei „teilweise“ werden die Unterpunkte einzeln beantwortet, ein teilweise fertiger
+  // Unterpunkt braucht einen Text (was offen ist und warum). Der Stand („3 von 6 fertig“)
+  // steht oben in der App und im Word-Bericht. Die Netzwerkschränke behalten die id 'f6',
+  // damit ihre Fotos (auch die umgezogenen „Serverschränke“) weiter dazugehören.
+  const GEWERK_OPT = [
+    { v: 'nicht', label: 'noch nicht begonnen', ampel: 'grau' },
+    { v: 'teilweise', label: 'teilweise', ampel: 'gelb' },
+    { v: 'fertig', label: 'fertig', ampel: 'gruen' },
+  ];
+  const BEREICH_OPT = [
+    { v: 'nicht', label: 'nicht begonnen', ampel: 'grau' },
+    { v: 'teilweise', label: 'teilweise', ampel: 'gelb' },
+    { v: 'fertig', label: 'fertig', ampel: 'gruen' },
+    { v: 'entfaellt', label: 'entfällt', ampel: 'grau' },
+  ];
+  const BEREICHE = [
+    ['verkauf', 'Verkaufsbereich'], ['kasse', 'Kassenzone'], ['akten', 'Aktenraum'], ['pfand', 'Pfandraum'],
+    ['lager', 'Filiallager'], ['technik', 'Technikebene'], ['back', 'Backbereich'], ['sozial', 'Sozialbereich'],
+  ].map(([id, label]) => ({ id, label }));
+  const SCHRAENKE = [1, 2, 3].flatMap((n) => [
+    { id: `s${n}-key`, label: 'Keystone-Module', schrank: n },
+    { id: `s${n}-tp`, label: 'Transferpanels', schrank: n },
+  ]);
+  const V1_S3 = ABSCHNITTE_V1.find((s) => s.id === 's3').punkte;
+  const v1Punkt = (id) => V1_S3.find((p) => p.id === id);
+  const ABSCHNITTE = ABSCHNITTE_V1.map((s) => (s.id !== 's3' ? s : { ...s, punkte: [
+    { id: 'g1', typ: 'fortschritt', titel: 'Kabelzug', unter: BEREICHE, entfaellt: true },
+    { id: 'g2', typ: 'fortschritt', titel: 'Ausbau Datendosen', unter: BEREICHE, entfaellt: true },
+    v1Punkt('f4'),
+    v1Punkt('f5'),
+    // Pflichtfotos, solange die Schränke in Arbeit sind – und in der Woche, in der sie fertig
+    // werden. War „fertig“ schon in der Vorwoche, entfällt die Pflicht (fotoPflicht).
+    { id: 'f6', typ: 'fortschritt', titel: 'Aufbau Netzwerkschränke', unter: SCHRAENKE, schraenke: true,
+      fotos: { min: 3, label: 'Fotos der Netzwerkschränke (Pflicht, mindestens 3)' } },
+    { id: 'g4', typ: 'fortschritt', titel: 'Inbetriebnahme', unter: [
+      { id: 'ibn40', label: 'IBN 4.0-Komponenten' },
+      { id: 'ibnrest', label: 'IBN restliche Komponenten' },
+    ] },
+    v1Punkt('f8'), v1Punkt('f9'), v1Punkt('f10'), v1Punkt('f11'),
+  ] }));
+
+  // Katalog des geöffneten Berichts.
+  const abschnitte = () => (current && current.katalog === 2 ? ABSCHNITTE : ABSCHNITTE_V1);
+  const allePunkte = () => abschnitte().flatMap((s) => s.punkte);
   const istPflicht = (p) => p.typ !== 'fotos' || !!p.pflichtMin;
-  const PFLICHT_PUNKTE = ALLE_PUNKTE.filter(istPflicht);
-  const D2_GRUPPEN = new Set(ALLE_PUNKTE.filter((p) => p.gruppen).flatMap((p) => p.gruppen.map((g) => p.id + '-' + g.id)));
+  const pflichtPunkte = () => allePunkte().filter(istPflicht);
+  const D2_GRUPPEN = new Set([...ABSCHNITTE_V1, ...ABSCHNITTE].flatMap((s) => s.punkte)
+    .filter((p) => p.gruppen).flatMap((p) => p.gruppen.map((g) => p.id + '-' + g.id)));
 
   // --------------------------------------------------------- Kalenderwochen
   // ISO 8601: Woche mit dem ersten Donnerstag des Jahres ist KW 1, Wochen beginnen montags.
@@ -213,7 +266,28 @@ const Wochenbericht = (() => {
   const neueId = () => 'wb' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
   function leer(kw) {
-    return { id: neueId(), kw, gespraechspartner: '', antworten: {}, erstelltAm: Date.now(), updatedAt: Date.now(), exportiertAm: null };
+    return { id: neueId(), kw, gespraechspartner: '', katalog: 2, vor: {}, antworten: {},
+      erstelltAm: Date.now(), updatedAt: Date.now(), exportiertAm: null };
+  }
+  // Fortschritt aus dem letzten älteren Bericht (katalog 2) übernehmen. Teilweise fertige
+  // Unterpunkte muss der Techniker bestätigen („unverändert“) oder ändern; alles andere gilt
+  // gleich als beantwortet. Fotos werden nicht übernommen.
+  function vorbelegen(job, b) {
+    const vorher = liste(job).filter((x) => x.katalog === 2 && x.kw < b.kw)
+      .sort((x, y) => (x.kw < y.kw ? 1 : -1))[0];
+    if (!vorher) return;
+    for (const p of ABSCHNITTE.flatMap((s) => s.punkte)) {
+      if (p.typ !== 'fortschritt') continue;
+      const alt = vorher.antworten[p.id];
+      if (!alt || !alt.status) continue;
+      const neu = { status: alt.status, text: '', notiz: '', nichts: false, unter: { status: null, text: '' }, bereiche: {} };
+      if (alt.anzahl) neu.anzahl = alt.anzahl;
+      for (const [uid, x] of Object.entries(alt.bereiche || {})) {
+        neu.bereiche[uid] = { status: x.status, text: x.text || '', bestaetigt: x.status !== 'teilweise' };
+      }
+      b.antworten[p.id] = neu;
+      b.vor[p.id] = alt.status;
+    }
   }
   function antwort(pid) {
     const a = current.antworten;
@@ -250,8 +324,49 @@ const Wochenbericht = (() => {
 
   // ----------------------------------------------------------- Vollständigkeit
   const voll = (s) => !!String(s || '').trim();
+
+  // Unterpunkte, die bei „teilweise“ zu beantworten sind (bei den Netzwerkschränken nur die
+  // der gewählten Anzahl Schränke).
+  const sichtbareUnter = (p, a) => (p.schraenke ? p.unter.filter((u) => u.schrank <= (+a.anzahl || 0)) : p.unter);
+  const bereichVon = (a, uid) => (a.bereiche || {})[uid] || {};
+  // Stand eines Gewerks: „3 von 6 fertig · 1 teilweise“; entfallende Bereiche zählen nicht.
+  // anteilFertig/anteilTeil für den Balken (0…1).
+  function fortschrittStand(p, a) {
+    a = a || {};
+    if (a.status === 'fertig') return { text: 'fertig', ampel: 'gruen', anteilFertig: 1, anteilTeil: 0 };
+    if (a.status === 'nicht') return { text: 'noch nicht begonnen', ampel: 'grau', anteilFertig: 0, anteilTeil: 0 };
+    if (a.status !== 'teilweise') return { text: 'noch nicht ausgefüllt', ampel: 'rot', anteilFertig: 0, anteilTeil: 0 };
+    const zaehlen = sichtbareUnter(p, a).filter((u) => bereichVon(a, u.id).status !== 'entfaellt');
+    const fertig = zaehlen.filter((u) => bereichVon(a, u.id).status === 'fertig').length;
+    const teil = zaehlen.filter((u) => bereichVon(a, u.id).status === 'teilweise').length;
+    const gesamt = zaehlen.length;
+    if (!gesamt) return { text: 'teilweise', ampel: 'gelb', anteilFertig: 0, anteilTeil: 0 };
+    return {
+      text: `${fertig} von ${gesamt} fertig` + (teil ? ` · ${teil} teilweise` : ''),
+      ampel: 'gelb', anteilFertig: fertig / gesamt, anteilTeil: teil / gesamt,
+    };
+  }
+  // NWS-Pflichtfotos: solange in Arbeit, und in der Woche, in der „fertig“ neu dazukommt.
+  function fotoPflicht(p, a) {
+    if (!p.fotos) return false;
+    if (a.status === 'teilweise') return true;
+    return a.status === 'fertig' && ((current && current.vor) || {})[p.id] !== 'fertig';
+  }
+
   function punktFertig(p) {
     const a = (current && current.antworten[p.id]) || {};
+    if (p.typ === 'fortschritt') {
+      if (!GEWERK_OPT.some((o) => o.v === a.status)) return false;
+      if (a.status === 'teilweise') {
+        if (p.schraenke && !a.anzahl) return false;
+        for (const u of sichtbareUnter(p, a)) {
+          const x = bereichVon(a, u.id);
+          if (!x.status) return false;
+          if (x.status === 'teilweise' && (!voll(x.text) || x.bestaetigt === false)) return false;
+        }
+      }
+      return !fotoPflicht(p, a) || (fotoZahl.get(p.id) || 0) >= p.fotos.min;
+    }
     if (p.typ === 'fotos') {
       if (!p.pflichtMin) return true;
       return !!a.nichts || (fotoZahl.get(p.id) || 0) >= p.pflichtMin;
@@ -275,8 +390,9 @@ const Wochenbericht = (() => {
   }
   const kopfFertig = () => voll(current && current.gespraechspartner);
   function stand() {
-    const fertig = PFLICHT_PUNKTE.filter(punktFertig).length + (kopfFertig() ? 1 : 0);
-    return { fertig, gesamt: PFLICHT_PUNKTE.length + 1 };
+    const pf = pflichtPunkte();
+    const fertig = pf.filter(punktFertig).length + (kopfFertig() ? 1 : 0);
+    return { fertig, gesamt: pf.length + 1 };
   }
   const abschnittStand = (s) => {
     const pf = s.punkte.filter(istPflicht);
@@ -425,6 +541,102 @@ const Wochenbericht = (() => {
     ta.style.height = ta.scrollHeight + 2 + 'px';
   }
 
+  // Balken für den Stand eines Gewerks (App): grün = fertig, gelb = teilweise.
+  const balkenHtml = (st) => `<div class="wb-fs-bar"><i class="f" style="width:${(st.anteilFertig * 100).toFixed(1)}%"></i>`
+    + `<i class="t" style="width:${(st.anteilTeil * 100).toFixed(1)}%"></i></div>`;
+
+  // Gewerk (Typ 'fortschritt'): Status, bei „teilweise“ je Unterpunkt eine Zeile.
+  async function fortschrittKarte(card, p, a) {
+    const neu = () => render(`.wb-item[data-pid="${p.id}"]`);
+    if (!a.bereiche) a.bereiche = {};
+    card.insertAdjacentHTML('beforeend', auswahlKnoepfe(GEWERK_OPT, a.status));
+    card.lastElementChild.querySelectorAll('.vp-opt').forEach((b) => {
+      b.onclick = async () => { a.status = b.dataset.val; await saveNow(); await neu(); };
+    });
+    const st = fortschrittStand(p, a);
+    if (a.status) card.insertAdjacentHTML('beforeend', `<div class="wb-fs-mini"><span>${escHtml(st.text)}</span>${balkenHtml(st)}</div>`);
+
+    if (a.status === 'teilweise') {
+      const box = document.createElement('div');
+      box.className = 'wb-bereiche';
+      if (p.schraenke) {
+        box.insertAdjacentHTML('beforeend', `<div class="wb-uq">Anzahl Netzwerkschränke</div>`
+          + auswahlKnoepfe([{ v: '2', label: '2 Schränke', ampel: 'neutral' }, { v: '3', label: '3 Schränke', ampel: 'neutral' }],
+            a.anzahl ? String(a.anzahl) : null));
+        box.lastElementChild.querySelectorAll('.vp-opt').forEach((b) => {
+          b.onclick = async () => { a.anzahl = +b.dataset.val; await saveNow(); await neu(); };
+        });
+      }
+      const opts = p.entfaellt ? BEREICH_OPT : BEREICH_OPT.filter((o) => o.v !== 'entfaellt');
+      let schrank = 0;
+      for (const u of sichtbareUnter(p, a)) {
+        if (p.schraenke && u.schrank !== schrank) {
+          schrank = u.schrank;
+          box.insertAdjacentHTML('beforeend', `<div class="wb-schrank">Schrank ${schrank}</div>`);
+        }
+        if (!a.bereiche[u.id]) a.bereiche[u.id] = { status: null, text: '', bestaetigt: true };
+        const x = a.bereiche[u.id];
+        const pruefen = x.status === 'teilweise' && x.bestaetigt === false;
+        const row = document.createElement('div');
+        row.className = 'wb-bereich' + (x.status ? ' gesetzt' : '') + (pruefen ? ' pruefen' : '');
+        row.innerHTML = `<div class="wb-bname">${escHtml(u.label)}</div>` + auswahlKnoepfe(opts, x.status);
+        row.querySelectorAll('.vp-opt').forEach((b) => {
+          b.onclick = async () => { x.status = b.dataset.val; x.bestaetigt = true; await saveNow(); await neu(); };
+        });
+        if (x.status === 'teilweise') {
+          row.insertAdjacentHTML('beforeend', `<label class="vp-textlabel wb-detail">Was ist offen, und warum nicht fertig? (Pflichtfeld)
+            <textarea class="vp-text wb-auto wb-btext" rows="2">${escHtml(x.text || '')}</textarea></label>`
+            + (pruefen ? `<div class="wb-pruefen"><span>aus der Vorwoche übernommen – bitte prüfen</span>
+                <button type="button" class="btn ghost wb-unveraendert">✓ unverändert</button></div>` : ''));
+          const ta = row.querySelector('.wb-btext');
+          ta.oninput = () => {
+            x.text = ta.value; x.bestaetigt = true;
+            autoHoehe(ta);
+            row.classList.remove('pruefen');
+            const hinweis = row.querySelector('.wb-pruefen');
+            if (hinweis) hinweis.remove();
+            scheduleSave(); aktualisiere();
+          };
+          const ok = row.querySelector('.wb-unveraendert');
+          if (ok) ok.onclick = async () => { x.bestaetigt = true; await saveNow(); await neu(); };
+        }
+        box.appendChild(row);
+      }
+      card.appendChild(box);
+    }
+    // Fotos: Pflicht nach fotoPflicht; schon vorhandene Fotos bleiben sichtbar.
+    if (p.fotos) {
+      const pflicht = fotoPflicht(p, a);
+      if (pflicht || (fotoZahl.get(p.id) || 0)) {
+        await fotoBlock(card, p.id, pflicht ? p.fotos.label : 'Fotos der Netzwerkschränke (freiwillig)', pflicht ? p.fotos.min : 0);
+      }
+    }
+  }
+
+  // Kasten „Baufortschritt“ oben: Stand aller Gewerke; Antippen öffnet das Gewerk.
+  function renderFortschritt() {
+    const box = $('#wbFortschritt');
+    if (!box) return;
+    const gewerke = current && current.katalog === 2 ? allePunkte().filter((p) => p.typ === 'fortschritt') : [];
+    box.hidden = !gewerke.length;
+    if (!gewerke.length) { box.innerHTML = ''; return; }
+    box.innerHTML = '<div class="wb-fs-titel">Baufortschritt</div>' + gewerke.map((p) => {
+      const st = fortschrittStand(p, current.antworten[p.id]);
+      return `<button type="button" class="wb-fs-row ${st.ampel}" data-pid="${p.id}">
+          <span class="wb-fs-name">${escHtml(p.titel)}</span>
+          <span class="wb-fs-text">${escHtml(st.text)}</span>${balkenHtml(st)}</button>`;
+    }).join('');
+    box.querySelectorAll('.wb-fs-row').forEach((b) => {
+      b.onclick = async () => {
+        const s = abschnitte().find((x) => x.punkte.some((q) => q.id === b.dataset.pid));
+        if (!s) return;
+        if (!offen.has(s.id)) { offen = new Set([s.id]); aufgeklappt = s.id; await render(); }
+        const el = document.querySelector(`.wb-item[data-pid="${b.dataset.pid}"]`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      };
+    });
+  }
+
   async function karte(p) {
     const a = antwort(p.id);
     const card = document.createElement('div');
@@ -469,6 +681,8 @@ const Wochenbericht = (() => {
       nb.onclick = () => { nb.hidden = true; nl.hidden = false; autoHoehe(nl.querySelector('textarea')); nl.querySelector('textarea').focus(); };
       nl.querySelector('textarea').oninput = (ev) => { a.notiz = ev.target.value; autoHoehe(ev.target); scheduleSave(); };
     }
+
+    if (p.typ === 'fortschritt') await fortschrittKarte(card, p, a);
 
     if (p.typ === 'frei') {
       card.insertAdjacentHTML('beforeend', `<textarea class="vp-text wb-auto wb-frei" rows="3" placeholder="Eintragen …">${escHtml(a.text || '')}</textarea>
@@ -553,14 +767,14 @@ const Wochenbericht = (() => {
   // sonst verlöre das Textfeld beim Tippen den Fokus.
   function aktualisiere() {
     if (!current) return;
-    for (const p of ALLE_PUNKTE) {
+    for (const p of allePunkte()) {
       const el = document.querySelector(`.wb-item[data-pid="${p.id}"]`);
       if (!el || !istPflicht(p)) continue;
       const ok = punktFertig(p);
       el.classList.toggle('done', ok);
       el.classList.toggle('missing', pruefModus && !ok);
     }
-    for (const s of ABSCHNITTE) {
+    for (const s of abschnitte()) {
       const st = abschnittStand(s);
       const head = document.querySelector(`.wb-sec[data-sid="${s.id}"]`);
       if (!head) continue;
@@ -586,6 +800,7 @@ const Wochenbericht = (() => {
       z.textContent = `${g.fertig}/${g.gesamt} beantwortet`;
       z.classList.toggle('done', g.fertig >= g.gesamt);
     }
+    renderFortschritt();
   }
 
   // Neuaufbau ohne Springen: Die Liste entsteht außerhalb der Seite und ersetzt die alte
@@ -625,8 +840,9 @@ const Wochenbericht = (() => {
     if (document.activeElement !== gp) gp.value = current.gespraechspartner || '';
 
     const frag = document.createDocumentFragment();
-    for (let i = 0; i < ABSCHNITTE.length; i++) {
-      const s = ABSCHNITTE[i];
+    const ABS = abschnitte();
+    for (let i = 0; i < ABS.length; i++) {
+      const s = ABS[i];
       const head = document.createElement('button');
       head.type = 'button';
       head.className = 'wb-sec' + (offen.has(s.id) ? ' open' : '');
@@ -711,12 +927,13 @@ const Wochenbericht = (() => {
   async function oeffne(kw) {
     await flush();
     const job = App.getCurrentJob();
-    current = liste(job).find((b) => b.kw === kw) || leer(kw);
+    current = liste(job).find((b) => b.kw === kw);
+    if (!current) { current = leer(kw); vorbelegen(job, current); }
     pruefModus = false;
     await zaehleFotos();
     // Den ersten unvollständigen Abschnitt aufklappen.
     offen = new Set();
-    const erster = ABSCHNITTE.find((s) => { const st = abschnittStand(s); return st.fertig < st.gesamt; });
+    const erster = abschnitte().find((s) => { const st = abschnittStand(s); return st.fertig < st.gesamt; });
     if (erster) offen.add(erster.id);
     await render();
   }
@@ -770,10 +987,10 @@ const Wochenbericht = (() => {
 
   // ----------------------------------------------------------- Pflicht prüfen
   async function markiereOffene() {
-    const fehlend = PFLICHT_PUNKTE.filter((p) => !punktFertig(p));
+    const fehlend = pflichtPunkte().filter((p) => !punktFertig(p));
     // Nur den ersten Abschnitt mit offenen Punkten aufklappen (immer nur einer offen);
     // die übrigen betroffenen zeigen ihren roten Zustand an der Kopfzeile.
-    const erster = ABSCHNITTE.find((s) => s.punkte.some((p) => fehlend.includes(p)));
+    const erster = abschnitte().find((s) => s.punkte.some((p) => fehlend.includes(p)));
     offen = new Set(erster ? [erster.id] : []);
     pruefModus = true;
     await render();                        // setzt über aktualisiere() die roten Markierungen
@@ -818,6 +1035,10 @@ const Wochenbericht = (() => {
   // Antwort eines Punkts als Klartext + Ampel für die Übersicht.
   function antwortText(p) {
     const a = current.antworten[p.id] || {};
+    if (p.typ === 'fortschritt') {
+      const st = fortschrittStand(p, a);
+      return { text: st.text, ampel: st.ampel };
+    }
     if (p.typ === 'frei') {
       if (a.nichts) return { text: p.nichts.replace(/^–\s*|\s*–$/g, ''), ampel: 'grau' };
       return { text: 'siehe Abschnitt', ampel: 'gruen' };
@@ -845,11 +1066,40 @@ const Wochenbericht = (() => {
   // „Was fehlt? (Pflichtfeld)" -> „Was fehlt" – im Bericht folgt direkt der Doppelpunkt.
   const labelKurz = (l) => String(l).replace(/\s*\(Pflichtfeld\)/, '').replace(/[?:]\s*$/, '');
 
+  // Balken für die Word-Tabelle „Baufortschritt“: eine randlose, schmale Tabelle aus bis zu
+  // drei schattierten Zellen (grün fertig, gelb teilweise, grau Rest). breite in Twips.
+  const BALKEN_FARBEN = ['3A9D5D', 'E0A100', 'DDE2E7'];
+  function balkenXml(st, breite) {
+    const anteile = [st.anteilFertig, st.anteilTeil, Math.max(0, 1 - st.anteilFertig - st.anteilTeil)];
+    const teile = anteile.map((x, i) => [Math.round(x * breite), BALKEN_FARBEN[i]]).filter(([w]) => w > 0);
+    const rest = breite - teile.reduce((s, [w]) => s + w, 0);
+    if (teile.length) teile[teile.length - 1][0] += rest;
+    const ohne = ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']
+      .map((s) => `<w:${s} w:val="none" w:sz="0" w:space="0" w:color="auto"/>`).join('');
+    const leer = (sz) => `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="${sz * 10}" w:lineRule="exact"/>`
+      + `<w:rPr><w:sz w:val="${sz}"/></w:rPr></w:pPr></w:p>`;
+    const zellen = teile.map(([w, c]) => `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>`
+      + `<w:shd w:val="clear" w:color="auto" w:fill="${c}"/></w:tcPr>${leer(2)}</w:tc>`).join('');
+    return '<w:tbl><w:tblPr>'
+      + `<w:tblW w:w="${breite}" w:type="dxa"/><w:tblBorders>${ohne}</w:tblBorders><w:tblLayout w:type="fixed"/>`
+      + '<w:tblCellMar><w:left w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tblCellMar></w:tblPr>'
+      + `<w:tblGrid>${teile.map(([w]) => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>`
+      + `<w:tr><w:trPr><w:trHeight w:val="220" w:hRule="exact"/></w:trPr>${zellen}</w:tr></w:tbl>` + leer(2);
+  }
+  // Zeichen und Farbe je Status eines Unterpunkts im Detailteil.
+  const BEREICH_WORD = {
+    fertig: { zeichen: '✓', color: '1F7A43', zusatz: '' },
+    teilweise: { zeichen: '◐', color: '8A5A00', zusatz: ' – teilweise' },
+    nicht: { zeichen: '○', color: '5A6672', zusatz: ' – noch nicht begonnen' },
+    entfaellt: { zeichen: '–', color: '5A6672', zusatz: ' (entfällt)' },
+  };
+
   async function erzeugeWord() {
     const job = App.getCurrentJob();
     const h = job.header || {};
     const doc = Docx.create();
     const o = kwParse(current.kw);
+    const ABS = abschnitte();
 
     // Briefkopf: Titel und Eckdaten links, Logo rechts.
     await doc.letterhead([
@@ -863,6 +1113,31 @@ const Wochenbericht = (() => {
     ]);
     doc.push(Docx.pEmpty());
 
+    // Baufortschritt (ab katalog 2): je Gewerk Stand und Balken, Klick springt zur Karte.
+    const gewerke = [];
+    ABS.forEach((s, i) => s.punkte.forEach((p, k) => {
+      if (p.typ === 'fortschritt') gewerke.push({ p, nr: `${i + 1}.${k + 1}`, anker: `P${i + 1}_${k + 1}` });
+    }));
+    if (gewerke.length) {
+      doc.push(Docx.pBar('Baufortschritt', BLAU));
+      const WF = [3200, 3238, 3200];
+      const frows = [{ header: true, cells: [
+        { text: 'Gewerk', bold: true, fill: 'DCE6F1', color: BLAU },
+        { text: 'Stand', bold: true, fill: 'DCE6F1', color: BLAU },
+        { text: 'Fortschritt', bold: true, fill: 'DCE6F1', color: BLAU },
+      ] }];
+      for (const g of gewerke) {
+        const st = fortschrittStand(g.p, current.antworten[g.p.id]);
+        const am = AMPEL[st.ampel] || AMPEL.grau;
+        frows.push({ cells: [
+          { text: `${g.nr}  ${g.p.titel}`, bold: true, anker: g.anker },
+          { text: st.text, color: am.color, bold: true },
+          { xml: balkenXml(st, WF[2] - 200) },
+        ] });
+      }
+      doc.push(Docx.table(frows, WF), Docx.pEmpty());
+    }
+
     // Ampel-Übersicht
     doc.push(Docx.pBar('Übersicht', BLAU));
     const W = [4300, 4000, 1338];
@@ -873,7 +1148,7 @@ const Wochenbericht = (() => {
     ] }];
     // Punkte sind nummeriert (3.4) wie die Karten im Detailteil; ein Klick auf Abschnitt
     // oder Punkt springt in Word bzw. im PDF dorthin (Textmarken A3 / P3_4).
-    ABSCHNITTE.forEach((s, i) => {
+    ABS.forEach((s, i) => {
       rows.push({ cells: [{ text: `${i + 1}. ${s.titel}`, bold: true, fill: 'F3F6F9', color: BLAU, anker: `A${i + 1}` },
         { text: '', fill: 'F3F6F9' }, { text: '', fill: 'F3F6F9' }] });
       for (const [k, p] of s.punkte.entries()) {
@@ -913,8 +1188,8 @@ const Wochenbericht = (() => {
     // Abschnitt zerrissen, genau das soll nicht passieren.
     const SEITE_CM = 26;
     const passt = (cm) => cm <= SEITE_CM;
-    for (let i = 0; i < ABSCHNITTE.length; i++) {
-      const s = ABSCHNITTE[i];
+    for (let i = 0; i < ABS.length; i++) {
+      const s = ABS[i];
       const abschnittStart = doc.mark();
       let hoehe = 0.85;
       const punkte = [];                   // [von, bis, hoeheCm] je Karte
@@ -937,6 +1212,24 @@ const Wochenbericht = (() => {
           }
           if (voll(a.notiz)) text('Notiz: ' + a.notiz, { italic: true, color: '5A6672', after: 60 });
           if (opt && opt.fotos) fotos(await fotoItems(p.id));
+        } else if (p.typ === 'fortschritt') {
+          const st = fortschrittStand(p, a);
+          status = AMPEL[st.ampel] || AMPEL.grau;
+          text(st.text, { bold: true, color: status.color, after: 60 });
+          if (a.status === 'teilweise') {
+            let schrank = 0;
+            for (const u of sichtbareUnter(p, a)) {
+              if (p.schraenke && u.schrank !== schrank) {
+                schrank = u.schrank;
+                text(`Schrank ${schrank}`, { bold: true, sz: 20, color: BLAU, before: 80, after: 20 });
+              }
+              const x = bereichVon(a, u.id);
+              const z = BEREICH_WORD[x.status] || { zeichen: '?', color: 'B03224', zusatz: ' – offen' };
+              text(`${z.zeichen}  ${u.label}${z.zusatz}`, { color: z.color, bold: x.status === 'teilweise', after: 20 });
+              if (x.status === 'teilweise' && voll(x.text)) text('Offen / Grund: ' + x.text, { sz: 20, after: 60 });
+            }
+          }
+          if (p.fotos) fotos(await fotoItems(p.id));
         } else if (p.typ === 'frei') {
           status = AMPEL[antwortText(p).ampel] || AMPEL.grau;
           if (a.nichts) text(p.nichts, { color: '5A6672', after: 60 });
@@ -1004,7 +1297,7 @@ const Wochenbericht = (() => {
     if (!current) return;
     await saveNow();
     await zaehleFotos();
-    const offenAnz = PFLICHT_PUNKTE.filter((p) => !punktFertig(p)).length + (kopfFertig() ? 0 : 1);
+    const offenAnz = pflichtPunkte().filter((p) => !punktFertig(p)).length + (kopfFertig() ? 0 : 1);
     if (offenAnz) {
       await markiereOffene();
       App.toast(`Noch ${offenAnz} Punkt(e) offen – rot markiert. Erst danach gibt es den Word-Bericht.`, 4500);
@@ -1053,5 +1346,5 @@ const Wochenbericht = (() => {
   // Auftrag gewechselt: den geöffneten Bericht vergessen, damit er nicht im neuen landet.
   function reset() { current = null; fotoZahl = new Map(); pruefModus = false; secStand = new Map(); }
 
-  return { init, enter, flush, reset, ABSCHNITTE, isoWoche, kwKey };
+  return { init, enter, flush, reset, ABSCHNITTE, ABSCHNITTE_V1, isoWoche, kwKey };
 })();
