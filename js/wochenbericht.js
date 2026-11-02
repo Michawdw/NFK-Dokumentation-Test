@@ -39,7 +39,7 @@ const Wochenbericht = (() => {
   //         'fotos' Fotogruppen; mit pflichtMin Pflicht (Summe über alle Gruppen, Ausnahme
   //                 per Knopf „nichts"), ohne pflichtMin freiwillig und nicht mitgezählt
   //  frei + fotosPflicht: Fotos werden Pflicht, sobald Text eingetragen ist
-  // Ampel je Option (Word-Übersicht): gruen | gelb | rot | grau
+  // Ampel je Option (Word-Übersicht): gruen | gelb | rot | grau; kurz = Kurzform für den Ordnerkopf
   const JA_NEIN = (jaAmpel, neinAmpel) => [
     { v: 'ja', label: 'Ja', ampel: jaAmpel }, { v: 'nein', label: 'Nein', ampel: neinAmpel }];
   const KABELZUG = [
@@ -82,11 +82,11 @@ const Wochenbericht = (() => {
       ] },
       { id: 'f5', typ: 'wahl', titel: 'NWS eingebracht', viele: true, optionen: [
         { v: 'nichtangeliefert', label: 'noch nicht angeliefert', ampel: 'grau' },
-        { v: 'angeliefert', label: 'angeliefert, nicht eingebracht', ampel: 'gelb',
+        { v: 'angeliefert', label: 'angeliefert, nicht eingebracht', kurz: 'angeliefert', ampel: 'gelb',
           fotos: { min: 1, label: 'Foto der Netzwerkschränke (Pflicht, mindestens 1)' } },
-        { v: 'filiale', label: 'in der Filiale', ampel: 'gelb',
+        { v: 'filiale', label: 'in der Filiale', kurz: 'in Filiale', ampel: 'gelb',
           fotos: { min: 1, label: 'Foto der Netzwerkschränke (Pflicht, mindestens 1)' } },
-        { v: 'serverraum', label: 'im Serverraum aufgestellt', ampel: 'gruen',
+        { v: 'serverraum', label: 'im Serverraum aufgestellt', kurz: 'im Serverraum', ampel: 'gruen',
           fotos: { min: 1, label: 'Foto der Netzwerkschränke (Pflicht, mindestens 1)' } },
       ] },
       // Sobald etwas eingetragen ist (also nicht „noch nicht begonnen"), sind 3 Fotos Pflicht.
@@ -643,14 +643,7 @@ const Wochenbericht = (() => {
         const pid = b.dataset.pid;
         const s = abschnitte().find((x) => x.punkte.some((q) => q.id === pid));
         if (!s || klappt) return;
-        // Einfacher Punkt (Kabelzug IC): Abschnitt öffnen und die Karte nach oben holen.
-        if (s.punkte.find((q) => q.id === pid).typ !== 'fortschritt') {
-          if (!offen.has(s.id)) { offen = new Set([s.id]); await render(); }
-          const item = document.querySelector(`.wb-item[data-pid="${pid}"]`);
-          if (item) App.kopfNachOben(item);
-          return;
-        }
-        // Abschnitt und Unterordner des Gewerks öffnen; der Unterordner gleitet nach oben.
+        // Abschnitt und Unterordner des Punkts öffnen; der Unterordner gleitet nach oben.
         if (offen.has(s.id) && offenSub.has(pid)) { App.kopfNachOben(document.querySelector(subSel(pid))); return; }
         if (offen.has(s.id)) { await klappen('.wb-sub', subSel(pid), () => { offenSub = new Set([pid]); return true; }); return; }
         offen = new Set([s.id]);
@@ -814,7 +807,7 @@ const Wochenbericht = (() => {
       head.querySelector('.wb-sec-check').hidden = !ok;
     }
     for (const p of allePunkte()) {
-      const sub = p.typ === 'fortschritt' && document.querySelector(subSel(p.id));
+      const sub = document.querySelector(subSel(p.id));
       if (sub) subKopfStand(sub, p);
     }
     const kopf = $('#wbKopf');
@@ -840,7 +833,7 @@ const Wochenbericht = (() => {
   let secStand = new Map();     // Abschnitt vollständig? (für den Haken-Effekt)
   let aufgeklappt = null;       // Selektor des gerade geöffneten Ordnerkopfs – wird weich aufgezogen
   let klappt = false;           // Sperre gegen Doppel-Tippen während des Zuklappens
-  let offenSub = new Set();     // geöffneter Gewerk-Unterordner (pid), höchstens einer
+  let offenSub = new Set();     // geöffneter Unterordner in Abschnitt 3 (pid), höchstens einer
   const secSel = (sid) => `.wb-sec[data-sid="${sid}"]`;
   const subSel = (pid) => `.wb-sub[data-pid="${pid}"]`;
   function ankerVon(el) {
@@ -876,10 +869,28 @@ const Wochenbericht = (() => {
     }
   }
 
+  // Ab katalog 2 steht jeder Punkt in Abschnitt 3 in einem eigenen Unterordner (v82.4).
+  const alsOrdner = (s, p) => p.typ === 'fortschritt' || (current && current.katalog === 2 && s.id === 's3');
+
   // Kopf eines Gewerk-Unterordners nachziehen: Zähler = Baufortschritt („3/7“, „fertig“ …),
   // Balken = Anteil fertig, ✓/grün sobald das Gewerk vollständig beantwortet ist.
+  // Einfache Punkte zeigen die gewählte Antwort; Balken voll und Name grün bei grüner Ampel.
   function subKopfStand(head, p) {
     const a = current.antworten[p.id] || {};
+    if (p.typ !== 'fortschritt') {
+      const opt = (p.optionen || []).find((o) => o.v === a.status);
+      const gruen = !!opt && opt.ampel === 'gruen';
+      const ok = punktFertig(p);
+      head.style.setProperty('--p', gruen ? 1 : 0);
+      head.classList.toggle('done', ok);
+      head.classList.toggle('fertig', gruen);
+      head.classList.toggle('missing', pruefModus && !ok);
+      const stat = head.querySelector('.wb-sub-stat');
+      stat.textContent = opt ? (opt.kurz || opt.label.replace(/^noch /, '')) : 'offen';
+      stat.classList.toggle('done', gruen);
+      head.querySelector('.wb-sub-check').hidden = !ok;
+      return;
+    }
     const st = fortschrittStand(p, a);
     const zaehler = a.status === 'teilweise' && st.gesamt ? `${st.fertig}/${st.gesamt}`
       : a.status === 'fertig' ? 'fertig' : a.status === 'nicht' ? 'nicht begonnen' : 'offen';
@@ -939,8 +950,8 @@ const Wochenbericht = (() => {
       const body = document.createElement('div');
       body.className = 'wb-sec-body';
       for (const p of s.punkte) {
-        if (p.typ !== 'fortschritt') { body.appendChild(await karte(p)); continue; }
-        // Gewerk als Unterordner (wie die Unterordner der Bilddoku).
+        if (!alsOrdner(s, p)) { body.appendChild(await karte(p)); continue; }
+        // Gewerk bzw. Punkt als Unterordner (wie die Unterordner der Bilddoku).
         const sub = document.createElement('button');
         sub.type = 'button';
         sub.className = 'wb-sub' + (offenSub.has(p.id) ? ' open' : '');
@@ -1081,9 +1092,9 @@ const Wochenbericht = (() => {
     // die übrigen betroffenen zeigen ihren roten Zustand an der Kopfzeile.
     const erster = abschnitte().find((s) => s.punkte.some((p) => fehlend.includes(p)));
     offen = new Set(erster ? [erster.id] : []);
-    // Ist der erste offene Punkt dort ein Gewerk, dessen Unterordner aufklappen.
+    // Steht der erste offene Punkt dort in einem Unterordner, diesen aufklappen.
     const erstesGewerk = erster && erster.punkte.find((p) => fehlend.includes(p));
-    offenSub = new Set(erstesGewerk && erstesGewerk.typ === 'fortschritt' ? [erstesGewerk.id] : []);
+    offenSub = new Set(erstesGewerk && alsOrdner(erster, erstesGewerk) ? [erstesGewerk.id] : []);
     pruefModus = true;
     await render();                        // setzt über aktualisiere() die roten Markierungen
     const kopf = $('#wbKopf');
