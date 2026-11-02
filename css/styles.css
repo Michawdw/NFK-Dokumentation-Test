@@ -560,12 +560,13 @@ fieldset.techs legend { font-weight: 700; padding: 0 6px; }
 .wb-stand.done { color: var(--ok); background: #e7f5ec; border-color: #bfe3cd; }
 .wb-sec {
   display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
-  min-height: 52px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer;
-  border: 1px solid var(--line); border-radius: 12px; background: #f3f5f8;
-  font-size: 16px; font-weight: 700; color: var(--brand); font-family: inherit;
+  min-height: 52px; padding: 14px 12px; margin-bottom: 8px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 12px; background: #fff;
+  font-size: 17px; font-weight: 800; color: var(--brand); font-family: inherit;
 }
 .wb-sec.open { border-radius: 12px 12px 0 0; margin-bottom: 0; }
-.wb-sec.done { background: #e7f5ec; border-color: #b7dfc5; color: var(--ok); }
+/* Fertig wie ein erledigter Bilddoku-Ordner: Kopf bleibt weiß, Name grün und gedämpft. */
+.wb-sec.done .wb-sec-name { color: var(--ok); opacity: .8; }
 .wb-sec.missing { border-color: var(--warn); box-shadow: 0 0 0 2px rgba(192,57,43,.18); color: var(--warn); }
 .wb-sec .chev { flex: 0 0 auto; font-size: 12px; color: var(--muted); width: 14px; }
 .wb-sec-name { flex: 1; min-width: 0; word-break: break-word; }
@@ -628,6 +629,19 @@ textarea.wb-notiztext { min-height: 66px; }
 .wb-fs-mini { margin-top: 10px; font-size: 14px; font-weight: 700; color: var(--muted); }
 .wb-fs-mini .wb-fs-bar { margin-top: 4px; }
 .wb-bereiche { margin-top: 12px; }
+/* Gewerk als Unterordner (Kopf wie .tree-unter der Bilddoku). */
+.wb-sub {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; cursor: pointer;
+  margin: 0 0 10px 6px; width: calc(100% - 6px); padding: 10px 12px; min-height: 48px;
+  font: inherit; font-size: 15px; font-weight: 700; color: var(--brand-light);
+  background: #f7f9fb; border: 1px solid var(--line); border-radius: 10px;
+}
+.wb-sub .chev { flex: 0 0 auto; font-size: 12px; color: var(--muted); width: 14px; }
+.wb-sub-name { flex: 1; min-width: 0; word-break: break-word; }
+.wb-sub.done .wb-sub-name { color: var(--ok); opacity: .8; }
+.wb-sub.missing { border-color: var(--warn); box-shadow: 0 0 0 2px rgba(192,57,43,.18); color: var(--warn); }
+/* Im Unterordner steht der Titel schon im Kopf. */
+.wb-sub-body > .wb-item .wb-q { display: none; }
 .wb-schrank { font-weight: 800; color: var(--brand); margin: 12px 0 4px; }
 .wb-bereich { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; background: #fff; }
 .wb-bereich.pruefen { border-color: #d98c00; box-shadow: 0 0 0 2px rgba(217,140,0,.18); }
@@ -685,12 +699,12 @@ textarea.wb-notiztext { min-height: 66px; }
 .name-row.skipped, .tree-ober.skipped, .tree-unter.skipped { box-shadow: none; }
 
 /* ---------- Tipp-Rückmeldung ---------- */
-.bigbtn, .job-item, .tree-ober, .tree-unter, .wb-sec, .vp-opt, .job-more, .diary-arch-item,
+.bigbtn, .job-item, .tree-ober, .tree-unter, .wb-sec, .wb-sub, .vp-opt, .job-more, .diary-arch-item,
 .cam-btn, .gal-btn, .skip-btn, .del-btn, .icon-btn {
   transition: transform var(--dur-fast) var(--ease), background-color var(--dur-fast),
     border-color var(--dur-fast), box-shadow var(--dur-fast);
 }
-.bigbtn:active, .job-item:active, .tree-ober:active, .tree-unter:active, .wb-sec:active,
+.bigbtn:active, .job-item:active, .tree-ober:active, .tree-unter:active, .wb-sec:active, .wb-sub:active,
 .job-more:active, .diary-arch-item:active { transform: scale(.985); }
 .vp-seg .vp-opt:active, .cam-btn:active, .gal-btn:active, .skip-btn:active,
 .del-btn:active, .icon-btn:active { transform: scale(.94); }
@@ -698,24 +712,24 @@ textarea.wb-notiztext { min-height: 66px; }
 .tree-ober:has(button:active), .tree-unter:has(button:active) { transform: none; }
 
 /* ---------- Pfeile drehen statt Zeichen tauschen ---------- */
-.tree-ober .chev, .tree-unter .chev, .wb-sec .chev, .job-more .chev {
+.tree-ober .chev, .tree-unter .chev, .wb-sec .chev, .wb-sub .chev, .job-more .chev {
   display: inline-block; text-align: center;
   transition: transform var(--dur) var(--ease);
 }
-.tree-ober.open .chev, .tree-unter.open .chev, .wb-sec.open .chev, .job-more.open .chev {
+.tree-ober.open .chev, .tree-unter.open .chev, .wb-sec.open .chev, .wb-sub.open .chev, .job-more.open .chev {
   transform: rotate(90deg);
 }
 .job-more .chev { width: 14px; font-size: 12px; margin-right: 4px; }
 
 /* ---------- Fortschrittsbalken in Ordner-Köpfen ---------- */
-.tree-ober, .tree-unter, .wb-sec { position: relative; overflow: hidden; }
-.tree-ober[style*="--p"]::after, .tree-unter[style*="--p"]::after, .wb-sec[style*="--p"]::after {
+.tree-ober, .tree-unter, .wb-sec, .wb-sub { position: relative; overflow: hidden; }
+.tree-ober[style*="--p"]::after, .tree-unter[style*="--p"]::after, .wb-sec[style*="--p"]::after, .wb-sub[style*="--p"]::after {
   content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
   background: var(--brand-light); transform-origin: left center;
   transform: scaleX(var(--p, 0));
   transition: transform 400ms var(--ease), background-color var(--dur);
 }
-.tree-ober.alldone::after, .tree-unter.alldone::after, .wb-sec.done::after { background: var(--ok); }
+.tree-ober.alldone::after, .tree-unter.alldone::after, .wb-sec.done::after, .wb-sub.fertig::after { background: var(--ok); }
 .tree-ober.skipped::after, .tree-unter.skipped::after { display: none; }
 
 /* ---------- Ansichtswechsel ---------- */
@@ -804,7 +818,7 @@ textarea.wb-notiztext { min-height: 66px; }
   .btn.is-busy::before { animation: none; }
 }
 /* Während ein Ordner zuklappt (Klasse .zu aus app.js) dreht der Pfeil schon zurück. */
-.tree-ober.open.zu .chev, .tree-unter.open.zu .chev, .wb-sec.open.zu .chev { transform: none; }
+.tree-ober.open.zu .chev, .tree-unter.open.zu .chev, .wb-sec.open.zu .chev, .wb-sub.open.zu .chev { transform: none; }
 
 /* Kacheln nie breiter als der Bildschirm: Ohne minmax(0,1fr) wuchs die Rasterspalte auf
    die Breite des längsten Worts („Baubehinderungsanzeige") plus Icon-Kreis – auf schmalen
@@ -861,6 +875,16 @@ textarea, input, select, button { font-family: inherit; }
 }
 /* Zähler-Pillen auf blauem Grund weiß, sonst verschwimmen sie. */
 .tree-ober.open .grp-stat:not(.done):not(.skip), .tree-unter.open .grp-stat:not(.done):not(.skip) { background: #fff; }
+/* Wochenbericht: Abschnitte wie Oberordner, Gewerke wie Unterordner (gleiche Tönung). */
+.wb-sec.open:not(.missing) { background: var(--open-1-head); border-color: var(--open-1-line); }
+.wb-sec.open + .wb-sec-body { background: var(--open-1-body); border-color: var(--open-1-line); }
+.wb-sec.open .grp-stat:not(.done), .wb-sub.open .grp-stat:not(.done) { background: #fff; }
+.wb-sub.open:not(.missing) { background: var(--open-2-head); border-color: var(--open-2-line); }
+.wb-sub.open { border-radius: 10px 10px 0 0; margin-bottom: 0; }
+.wb-sub.open + .wb-sub-body {
+  background: var(--open-2-body); margin: 0 0 10px 6px; padding: 8px 8px 0;
+  border: 1px solid var(--open-2-line); border-top: none; border-radius: 0 0 10px 10px;
+}
 .tree-ober.open .skip-btn, .tree-unter.open .skip-btn { border-color: var(--open-1-line); }
 /* Als „nicht benötigt" markiert: bleibt grau gestrichelt, auch wenn geöffnet. */
 .tree-ober.open.skipped, .tree-unter.open.skipped { background: #f3f4f6; }

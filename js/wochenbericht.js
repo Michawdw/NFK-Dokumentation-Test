@@ -176,11 +176,11 @@ const Wochenbericht = (() => {
   ]);
   const V1_S3 = ABSCHNITTE_V1.find((s) => s.id === 's3').punkte;
   const v1Punkt = (id) => V1_S3.find((p) => p.id === id);
-  const ABSCHNITTE = ABSCHNITTE_V1.map((s) => (s.id !== 's3' ? s : { ...s, punkte: [
+  // „Noch offen“ (a2) entfällt ab katalog 2 – die offenen Punkte stehen jetzt bei den Gewerken.
+  const ABSCHNITTE = ABSCHNITTE_V1.map((s) => (s.id === 's2' ? { ...s, punkte: s.punkte.filter((p) => p.id !== 'a2') }
+    : s.id !== 's3' ? s : { ...s, punkte: [
     { id: 'g1', typ: 'fortschritt', titel: 'Kabelzug', unter: BEREICHE, entfaellt: true },
     { id: 'g2', typ: 'fortschritt', titel: 'Ausbau Datendosen', unter: BEREICHE, entfaellt: true },
-    v1Punkt('f4'),
-    v1Punkt('f5'),
     // Pflichtfotos, solange die Schränke in Arbeit sind – und in der Woche, in der sie fertig
     // werden. War „fertig“ schon in der Vorwoche, entfällt die Pflicht (fotoPflicht).
     { id: 'f6', typ: 'fortschritt', titel: 'Aufbau Netzwerkschränke', unter: SCHRAENKE, schraenke: true,
@@ -189,7 +189,8 @@ const Wochenbericht = (() => {
       { id: 'ibn40', label: 'IBN 4.0-Komponenten' },
       { id: 'ibnrest', label: 'IBN restliche Komponenten' },
     ] },
-    v1Punkt('f8'), v1Punkt('f9'), v1Punkt('f10'), v1Punkt('f11'),
+    // Gewerke (Unterordner) zuerst, darunter die einfachen Fragen.
+    v1Punkt('f4'), v1Punkt('f5'), v1Punkt('f8'), v1Punkt('f9'), v1Punkt('f10'), v1Punkt('f11'),
   ] }));
 
   // Katalog des geöffneten Berichts.
@@ -343,7 +344,7 @@ const Wochenbericht = (() => {
     if (!gesamt) return { text: 'teilweise', ampel: 'gelb', anteilFertig: 0, anteilTeil: 0 };
     return {
       text: `${fertig} von ${gesamt} fertig` + (teil ? ` · ${teil} teilweise` : ''),
-      ampel: 'gelb', anteilFertig: fertig / gesamt, anteilTeil: teil / gesamt,
+      ampel: 'gelb', anteilFertig: fertig / gesamt, anteilTeil: teil / gesamt, fertig, gesamt,
     };
   }
   // NWS-Pflichtfotos: solange in Arbeit, und in der Woche, in der „fertig“ neu dazukommt.
@@ -628,11 +629,16 @@ const Wochenbericht = (() => {
     }).join('');
     box.querySelectorAll('.wb-fs-row').forEach((b) => {
       b.onclick = async () => {
-        const s = abschnitte().find((x) => x.punkte.some((q) => q.id === b.dataset.pid));
-        if (!s) return;
-        if (!offen.has(s.id)) { offen = new Set([s.id]); aufgeklappt = s.id; await render(); }
-        const el = document.querySelector(`.wb-item[data-pid="${b.dataset.pid}"]`);
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const pid = b.dataset.pid;
+        const s = abschnitte().find((x) => x.punkte.some((q) => q.id === pid));
+        if (!s || klappt) return;
+        // Abschnitt und Unterordner des Gewerks öffnen; der Unterordner gleitet nach oben.
+        if (offen.has(s.id) && offenSub.has(pid)) { App.kopfNachOben(document.querySelector(subSel(pid))); return; }
+        if (offen.has(s.id)) { await klappen('.wb-sub', subSel(pid), () => { offenSub = new Set([pid]); return true; }); return; }
+        offen = new Set([s.id]);
+        offenSub = new Set([pid]);
+        aufgeklappt = subSel(pid);
+        await render();
       };
     });
   }
@@ -789,6 +795,10 @@ const Wochenbericht = (() => {
       head.querySelector('.wb-sec-stat').textContent = st.fertig + '/' + st.gesamt;
       head.querySelector('.wb-sec-check').hidden = !ok;
     }
+    for (const p of allePunkte()) {
+      const sub = p.typ === 'fortschritt' && document.querySelector(subSel(p.id));
+      if (sub) subKopfStand(sub, p);
+    }
     const kopf = $('#wbKopf');
     if (kopf) {
       kopf.classList.toggle('done', kopfFertig());
@@ -810,12 +820,60 @@ const Wochenbericht = (() => {
   // am Bildschirm, auch wenn sich darüber etwas verändert (z. B. ein Textfeld klappt auf).
   let renderGen = 0;
   let secStand = new Map();     // Abschnitt vollständig? (für den Haken-Effekt)
-  let aufgeklappt = null;       // gerade geöffneter Abschnitt – wird weich aufgezogen
+  let aufgeklappt = null;       // Selektor des gerade geöffneten Ordnerkopfs – wird weich aufgezogen
   let klappt = false;           // Sperre gegen Doppel-Tippen während des Zuklappens
+  let offenSub = new Set();     // geöffneter Gewerk-Unterordner (pid), höchstens einer
+  const secSel = (sid) => `.wb-sec[data-sid="${sid}"]`;
+  const subSel = (pid) => `.wb-sub[data-pid="${pid}"]`;
   function ankerVon(el) {
-    const k = el && el.closest && el.closest('.wb-item, .wb-sec');
+    const k = el && el.closest && el.closest('.wb-item, .wb-sec, .wb-sub');
     if (!k) return null;
-    return k.classList.contains('wb-sec') ? `.wb-sec[data-sid="${k.dataset.sid}"]` : `.wb-item[data-pid="${k.dataset.pid}"]`;
+    if (k.classList.contains('wb-sec')) return secSel(k.dataset.sid);
+    if (k.classList.contains('wb-sub')) return subSel(k.dataset.pid);
+    return `.wb-item[data-pid="${k.dataset.pid}"]`;
+  }
+
+  // Ordner auf-/zuklappen wie in der Bilddoku (App.treeUmschalten): Der bisher offene Ordner
+  // derselben Ebene klappt sichtbar zu, der angetippte Kopf bleibt dabei unter dem Finger
+  // stehen; ein frisch geöffneter Ordner gleitet danach unter die Kopfleiste (render()).
+  // ebene: '.wb-sec' oder '.wb-sub'; umschalten() stellt offen/offenSub um und liefert, ob
+  // der Ordner jetzt offen ist.
+  async function klappen(ebene, anker, umschalten) {
+    if (klappt) return;
+    klappt = true;
+    try {
+      const kopf = document.querySelector(`#wbAbschnitte ${ebene}.open`);
+      const body = kopf && kopf.nextElementSibling;
+      if (body && (body.classList.contains('wb-sec-body') || body.classList.contains('wb-sub-body'))) {
+        kopf.classList.add('zu');
+        const halt = App.halteKopf(document.querySelector(anker));
+        await App.animClose(body);
+        halt.jetzt();
+        halt.stop();
+      }
+      if (umschalten()) aufgeklappt = anker;
+      await render(anker);
+    } finally {
+      klappt = false;
+    }
+  }
+
+  // Kopf eines Gewerk-Unterordners nachziehen: Zähler = Baufortschritt („3/7“, „fertig“ …),
+  // Balken = Anteil fertig, ✓/grün sobald das Gewerk vollständig beantwortet ist.
+  function subKopfStand(head, p) {
+    const a = current.antworten[p.id] || {};
+    const st = fortschrittStand(p, a);
+    const zaehler = a.status === 'teilweise' && st.gesamt ? `${st.fertig}/${st.gesamt}`
+      : a.status === 'fertig' ? 'fertig' : a.status === 'nicht' ? 'nicht begonnen' : 'offen';
+    const ok = punktFertig(p);
+    head.style.setProperty('--p', st.anteilFertig.toFixed(3));
+    head.classList.toggle('done', ok);
+    head.classList.toggle('fertig', a.status === 'fertig' || (!!st.gesamt && st.fertig >= st.gesamt));
+    head.classList.toggle('missing', pruefModus && !ok);
+    const stat = head.querySelector('.wb-sub-stat');
+    stat.textContent = zaehler;
+    stat.classList.toggle('done', a.status === 'fertig');
+    head.querySelector('.wb-sub-check').hidden = !ok;
   }
 
   async function render(anker) {
@@ -851,30 +909,40 @@ const Wochenbericht = (() => {
         <span class="wb-sec-name">${i + 1}. ${escHtml(s.titel)}</span>
         <span class="grp-check wb-sec-check" hidden>✓</span>
         <span class="grp-stat wb-sec-stat"></span>`;
-      head.onclick = async () => {
-        if (klappt) return;
-        klappt = true;
-        try {
-          // Immer nur ein Abschnitt offen: Öffnen schließt den bisherigen – sichtbar zuklappen.
-          const altKopf = cont.querySelector('.wb-sec.open');
-          const altBody = altKopf && altKopf.nextElementSibling;
-          if (altBody && altBody.classList.contains('wb-sec-body')) {
-            altKopf.classList.add('zu');
-            await App.animClose(altBody);
-          }
-          const auf = !offen.has(s.id);
-          offen = auf ? new Set([s.id]) : new Set();
-          if (auf) aufgeklappt = s.id;
-          await render(`.wb-sec[data-sid="${s.id}"]`);
-        } finally {
-          klappt = false;
-        }
-      };
+      // Immer nur ein Abschnitt offen; beim Wechsel sind dessen Unterordner wieder zu.
+      head.onclick = () => klappen('.wb-sec', secSel(s.id), () => {
+        const auf = !offen.has(s.id);
+        offen = auf ? new Set([s.id]) : new Set();
+        offenSub = new Set();
+        return auf;
+      });
       frag.appendChild(head);
       if (!offen.has(s.id)) continue;
       const body = document.createElement('div');
       body.className = 'wb-sec-body';
-      for (const p of s.punkte) body.appendChild(await karte(p));
+      for (const p of s.punkte) {
+        if (p.typ !== 'fortschritt') { body.appendChild(await karte(p)); continue; }
+        // Gewerk als Unterordner (wie die Unterordner der Bilddoku).
+        const sub = document.createElement('button');
+        sub.type = 'button';
+        sub.className = 'wb-sub' + (offenSub.has(p.id) ? ' open' : '');
+        sub.dataset.pid = p.id;
+        sub.innerHTML = `<span class="chev">▶</span>
+          <span class="wb-sub-name">${escHtml(p.titel)}</span>
+          <span class="grp-check wb-sub-check" hidden>✓</span>
+          <span class="grp-stat wb-sub-stat"></span>`;
+        sub.onclick = () => klappen('.wb-sub', subSel(p.id), () => {
+          const auf = !offenSub.has(p.id);
+          offenSub = auf ? new Set([p.id]) : new Set();
+          return auf;
+        });
+        body.appendChild(sub);
+        if (!offenSub.has(p.id)) continue;
+        const subBody = document.createElement('div');
+        subBody.className = 'wb-sub-body';
+        subBody.appendChild(await karte(p));
+        body.appendChild(subBody);
+      }
       frag.appendChild(body);
     }
     if (gen !== renderGen) { activeUrls.forEach((u) => URL.revokeObjectURL(u)); activeUrls = alteUrls; return; }
@@ -888,10 +956,12 @@ const Wochenbericht = (() => {
       if (neu) window.scrollBy(0, neu.getBoundingClientRect().top - altTop);
     }
     if (aufgeklappt) {
-      const kopf = cont.querySelector(`.wb-sec[data-sid="${aufgeklappt}"]`);
+      const kopf = cont.querySelector(aufgeklappt);
       aufgeklappt = null;
       const body = kopf && kopf.nextElementSibling;
-      if (body && body.classList.contains('wb-sec-body')) App.animOpen(body);
+      if (body && (body.classList.contains('wb-sec-body') || body.classList.contains('wb-sub-body'))) {
+        App.animOpen(body, App.kopfNachOben(kopf));
+      }
       App.dreheChev(kopf);
     }
   }
@@ -933,6 +1003,7 @@ const Wochenbericht = (() => {
     await zaehleFotos();
     // Den ersten unvollständigen Abschnitt aufklappen.
     offen = new Set();
+    offenSub = new Set();
     const erster = abschnitte().find((s) => { const st = abschnittStand(s); return st.fertig < st.gesamt; });
     if (erster) offen.add(erster.id);
     await render();
@@ -992,10 +1063,13 @@ const Wochenbericht = (() => {
     // die übrigen betroffenen zeigen ihren roten Zustand an der Kopfzeile.
     const erster = abschnitte().find((s) => s.punkte.some((p) => fehlend.includes(p)));
     offen = new Set(erster ? [erster.id] : []);
+    // Ist der erste offene Punkt dort ein Gewerk, dessen Unterordner aufklappen.
+    const erstesGewerk = erster && erster.punkte.find((p) => fehlend.includes(p));
+    offenSub = new Set(erstesGewerk && erstesGewerk.typ === 'fortschritt' ? [erstesGewerk.id] : []);
     pruefModus = true;
     await render();                        // setzt über aktualisiere() die roten Markierungen
     const kopf = $('#wbKopf');
-    const erstes = !kopfFertig() ? kopf : document.querySelector('.wb-item.missing');
+    const erstes = !kopfFertig() ? kopf : document.querySelector('.wb-item.missing, .wb-sub.missing');
     if (erstes) erstes.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return fehlend.length + (kopfFertig() ? 0 : 1);
   }
@@ -1344,7 +1418,7 @@ const Wochenbericht = (() => {
   }
 
   // Auftrag gewechselt: den geöffneten Bericht vergessen, damit er nicht im neuen landet.
-  function reset() { current = null; fotoZahl = new Map(); pruefModus = false; secStand = new Map(); }
+  function reset() { current = null; fotoZahl = new Map(); pruefModus = false; secStand = new Map(); offenSub = new Set(); }
 
   return { init, enter, flush, reset, ABSCHNITTE, ABSCHNITTE_V1, isoWoche, kwKey };
 })();
