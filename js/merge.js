@@ -260,11 +260,18 @@ const Merge = (() => {
     // gleich einer neu angelegt, gibt es nichts zu vergleichen.
     if (o.pruefen) {
       const kv = (uebergabe && uebergabe.kv) || {};
+      // App-Version des Pakets (ab v83): aus manifest.json, sonst aus der beigelegten .xlsx.
+      let appVersion = kv.appversion || '';
+      try {
+        const mf = zip.file('manifest.json');
+        if (mf) appVersion = JSON.parse(await mf.async('string')).appVersion || appVersion;
+      } catch (e) { /* manifest unlesbar – readEntries meldet das */ }
       const antwort = await o.pruefen({
         filiale: kv.filiale || '',
         ort: kv.ort || '',
         filialNr: App.filialNr(kv.filiale) || filialNrAusBildern(zip) || App.filialNr(o.dateiname),
         hatUebergabe: !!uebergabe,
+        appVersion,
       }, job || null);
       if (!antwort) return { abgebrochen: true };
       kopfFelder = antwort.kopfFelder || [];

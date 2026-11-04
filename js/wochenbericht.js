@@ -184,6 +184,13 @@ const Wochenbericht = (() => {
     // steht mit im Kasten „Baufortschritt“ (imKasten).
     { id: 'g3', typ: 'wahl', titel: 'Kabelzug IC', imKasten: true, optionen: GEWERK_OPT.map((o) => (o.v !== 'teilweise' ? o
       : { ...o, text: { pflicht: true, label: 'Fehlende Bereiche und/oder Begründung (Pflichtfeld)' } })) },
+    // Installation Lautsprecher Instore-Communication (v83.1): bei „teilweise“ Pflichttext,
+    // bei „teilweise“ und „fertig“ jede Woche mindestens 1 Übersichtsbild Verkauf.
+    { id: 'g5', typ: 'wahl', titel: 'Installation Lautsprecher (IC)', imKasten: true, optionen: GEWERK_OPT.map((o) => {
+      const fotos = { min: 1, label: 'Übersichtsbild Verkauf (Pflicht, mindestens 1)' };
+      if (o.v === 'teilweise') return { ...o, text: { pflicht: true, label: 'Fehlende Bereiche und/oder Begründung (Pflichtfeld)' }, fotos };
+      return o.v === 'fertig' ? { ...o, fotos } : o;
+    }) },
     v1Punkt('f5'),
     { id: 'g2', typ: 'fortschritt', titel: 'Ausbau Datendosen', unter: BEREICHE, entfaellt: true },
     // Pflichtfotos, solange die Schränke in Arbeit sind – und in der Woche, in der sie fertig
@@ -1135,6 +1142,39 @@ const Wochenbericht = (() => {
     return out;
   }
 
+  // Inhalt des Datenteils im Word-Bericht: Kopf + alle Punkte aus Abschnitt 3 mit Stand.
+  // Gesamtampel: rot, sobald irgendein Punkt des Berichts rot ist; grün, wenn alles in
+  // Abschnitt 3 grün ist; sonst gelb. Feldnamen nicht ändern – das AVL-Tool liest sie.
+  function berichtsDaten(h) {
+    const o = kwParse(current.kw);
+    const s3 = abschnitte().find((s) => s.id === 's3');
+    const punkte = s3.punkte.map((p) => {
+      const a = current.antworten[p.id] || {};
+      const at = antwortText(p);
+      const d = { id: p.id, titel: p.titel, status: a.status || '', text: at.text, ampel: at.ampel };
+      if (p.typ === 'fortschritt') {
+        const st = fortschrittStand(p, a);
+        if (st.gesamt) Object.assign(d, { fertig: st.fertig, gesamt: st.gesamt });
+        if (p.schraenke && a.anzahl) d.anzahl = +a.anzahl;
+        // Offene Bereiche mit ihrem Text („Aktenraum: Decke fehlt“)
+        const offen = a.status === 'teilweise' ? sichtbareUnter(p, a)
+          .map((u) => [u, bereichVon(a, u.id)]).filter(([, x]) => x.status === 'teilweise' && voll(x.text))
+          .map(([u, x]) => (u.schrank ? `Schrank ${u.schrank} ${u.label}` : u.label) + ': ' + x.text.trim()) : [];
+        if (offen.length) d.offen = offen.join('; ');
+      }
+      if (p.typ !== 'fortschritt' && voll(a.text)) d.offen = a.text.trim();
+      return d;
+    });
+    const alle = allePunkte().filter((p) => p.typ !== 'fotos').map((p) => antwortText(p).ampel);
+    const gesamt = alle.includes('rot') ? 'rot' : punkte.every((p) => p.ampel === 'gruen') ? 'gruen' : 'gelb';
+    return {
+      format: 1, appVersion: App.APP_VERSION, kw: current.kw, jahr: o.jahr, woche: o.woche,
+      zeitraum: zeitraumText(current.kw), filiale: h.filiale || '', ort: h.ort || '',
+      gespraechspartner: current.gespraechspartner || '', erstellt: new Date().toISOString(),
+      gesamtampel: gesamt, punkte,
+    };
+  }
+
   // Antwort eines Punkts als Klartext + Ampel für die Übersicht.
   function antwortText(p) {
     const a = current.antworten[p.id] || {};
@@ -1381,6 +1421,8 @@ const Wochenbericht = (() => {
         doc.pageBreakBefore(abschnittStart);
       }
     }
+    // Unsichtbare Daten für die Gesamtübersicht im AVL-Tool (ab v83, nur katalog 2).
+    if (current.katalog === 2) doc.daten('urn:nfk-doku:wochenbericht:1', 'nfkWochenbericht', berichtsDaten(h));
     // Kopf-/Fußzeile ab Seite 2: welcher Bericht, welche Seite.
     doc.kopfFuss({ kopf: ['Wochenbericht ' + kwText(current.kw), h.filiale].filter(Boolean).join(' · ') });
     return { blob: await doc.toBlob(), o };

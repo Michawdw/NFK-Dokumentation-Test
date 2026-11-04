@@ -68,6 +68,7 @@ const Handover = (() => {
     s1.addRow(['Feld', 'Wert']);
     s1.getRow(1).font = { bold: true };
     s1.addRow(['id', job.id]);
+    s1.addRow(['appVersion', App.APP_VERSION]);   // ab v83: Import warnt bei abweichendem Stand
     s1.addRow(['name', job.name || '']);
     s1.addRow(['filiale', h.filiale || '']);
     s1.addRow(['ort', h.ort || '']);
@@ -470,7 +471,8 @@ const Handover = (() => {
       // versehentlich gewähltes Paket auffällt.
       const bestehend = daten.kv.id ? await DB.getJob(daten.kv.id) : null;
       const antwort = await o.pruefen(
-        { filiale: daten.kv.filiale || '', ort: daten.kv.ort || '', filialNr: App.filialNr(daten.kv.filiale) },
+        { filiale: daten.kv.filiale || '', ort: daten.kv.ort || '', filialNr: App.filialNr(daten.kv.filiale),
+          appVersion: daten.kv.appversion || '' },   // kvFromSheet schreibt die Schlüssel klein
         bestehend || App.getCurrentJob() || null,
         { neu: !bestehend, xlsx: true });
       if (!antwort) return null; // abgebrochen – es wurde nichts geschrieben
