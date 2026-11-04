@@ -71,6 +71,11 @@ h2 { font-size: 18px; margin: 18px 0 6px; }
 h3 { font-size: 16px; margin: 16px 0 8px; }
 .hint { color: var(--muted); font-size: 14px; margin: 4px 0 12px; }
 .app-version { text-align: center; color: var(--muted); font-size: 12px; margin: 18px 0 6px; opacity: 0.8; }
+.app-version.speicher-info { margin-top: 0; }
+/* Fehlerbericht im Import-Dialog: der Text, der verschickt wird */
+.fehler-bericht { white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.4;
+  background: #f3f6f9; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 12px 0 0; color: var(--muted); }
+#fehlerSendenBtn { width: 100%; margin-top: 4px; }
 
 /* ---------- Forms ---------- */
 .form label, .grid2 label { display: block; margin: 12px 0; font-weight: 600; font-size: 14px; }

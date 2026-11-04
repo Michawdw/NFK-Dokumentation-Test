@@ -40,6 +40,7 @@ const ExportZip = (() => {
     // manifest.json: maschinenlesbare Zuordnung Bild->Position (für exaktes Zusammenführen).
     const manifest = {
       app: 'nfk-doku', type: 'bilddoku', version: 1,
+      appVersion: App.APP_VERSION,  // ab v83: Import warnt bei abweichendem Stand
       job: { name: job && job.name, header: project },
       photos: [],
     };

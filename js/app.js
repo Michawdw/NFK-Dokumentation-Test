@@ -648,6 +648,42 @@ const App = (() => {
     renderSperre();
     renderVpStatus();
     await renderBackupReminder('#backupReminderStart');
+    await renderSpeicher();
+  }
+
+  // ------------------------------------------------- Speicherplatz (ab v83)
+  // navigator.storage.estimate(): belegt = Daten dieser App, frei = was der Browser ihr noch
+  // zugesteht (auf dem Handy grob der freie Gerätespeicher). null, wenn nicht abfragbar.
+  async function speicherStand() {
+    try {
+      if (!navigator.storage || !navigator.storage.estimate) return null;
+      const e = await navigator.storage.estimate();
+      if (!e || !e.quota) return null;
+      const belegt = e.usage || 0;
+      return { belegt, frei: Math.max(0, e.quota - belegt), quota: e.quota };
+    } catch (e) {
+      return null;
+    }
+  }
+  const speicherZeile = (sp) => `${groesse(sp.belegt)} belegt · ca. ${groesse(sp.frei)} frei`;
+  // Knapp: unter 1 GB frei oder über 80 % des zugestandenen Platzes belegt.
+  const speicherKnapp = (sp) => sp.frei < 1e9 || sp.belegt > 0.8 * sp.quota;
+
+  async function renderSpeicher() {
+    const info = $('#speicherInfo'), warn = $('#speicherWarnung');
+    const sp = await speicherStand();
+    if (info) {
+      info.hidden = !sp;
+      if (sp) info.textContent = 'Speicher: ' + speicherZeile(sp);
+    }
+    if (warn) {
+      const knapp = !!sp && speicherKnapp(sp);
+      warn.hidden = !knapp;
+      if (knapp) {
+        warn.innerHTML = `<span class="bk-msg">⚠ Speicher wird knapp (noch ca. ${escHtml(groesse(sp.frei))} frei). `
+          + 'Abgeschlossene Aufträge sichern (ZIP) und danach löschen – sonst können bald keine Bilder mehr gespeichert werden.</span>';
+      }
+    }
   }
 
   // Funktionsknöpfe dimmen und Hinweis zeigen, solange die Stammdaten nicht gespeichert sind.
@@ -748,6 +784,7 @@ const App = (() => {
     }
     await renderBackupReminder('#backupReminder');
     await renderBackupReminder('#backupReminderStart');
+    await renderSpeicher();
   }
 
   async function saveProjectForm(e) {
@@ -2189,7 +2226,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v82.4'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
+  const APP_VERSION = 'v83'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
@@ -2360,7 +2397,7 @@ const App = (() => {
   // Dateiart am Inhalt erkennen (nicht an der Endung – Android-Picker und WhatsApp melden
   // Endung/Typ unzuverlässig). Liefert { art: 'xlsx' | 'zip' | null, zip }.
   async function dateiArt(file) {
-    let zip = null, art = null;
+    let zip = null, art = null, fehler = null;
     try {
       // Direkt aus dem File lesen: ein zusätzliches arrayBuffer() hielte die komplette
       // ZIP (auf der Baustelle schnell einige hundert MB) ein zweites Mal im Speicher.
@@ -2373,20 +2410,131 @@ const App = (() => {
         || inhalt.filter((rel, f) => !f.dir && /^[^/]+\.xlsx$/i.test(rel)).length) art = 'zip';
     } catch (err) {
       console.warn('Datei ist weder .xlsx noch .zip:', err);
+      // Beginnt die Datei gar nicht mit „PK“, ist sie keine ZIP (falsche Datei gewählt) –
+      // nur sonst ist sie beschädigt bzw. unvollständig übertragen.
+      let pk = false;
+      try { const k = new Uint8Array(await file.slice(0, 2).arrayBuffer()); pk = k[0] === 0x50 && k[1] === 0x4b; } catch (e) { /* egal */ }
+      if (pk) fehler = err;
     }
-    return { art, zip };
+    return { art, zip, fehler };
   }
-  const UNBEKANNT = 'Unbekannte Datei – erwartet wird eine Übergabe-Datei (.xlsx) oder eine Bilddoku-ZIP.';
+
+  // ---------------------------------------------------- Fehlerbericht (ab v83)
+  // Beim Import lässt sich aus der Ferne sonst nicht klären, was schiefging („die ZIP geht
+  // nicht"). Der Dialog nennt Ursache und Tipp in Klartext; der Knopf schickt einen fertigen
+  // Text (Version, Gerät, Datei, Fehler, Speicher) per Teilen-Menü – sonst in die Zwischenablage.
+  function geraetKurz() {
+    const ua = navigator.userAgent || '';
+    const os = /iPhone|iPad|iPod/.test(ua) ? 'iPhone/iPad' + ((ua.match(/OS (\d+)_/) || [])[1] ? ' iOS ' + ua.match(/OS (\d+)_/)[1] : '')
+      : /Android/.test(ua) ? 'Android' + ((ua.match(/Android ([\d.]+)/) || [])[1] ? ' ' + ua.match(/Android ([\d.]+)/)[1] : '')
+        : /Windows/.test(ua) ? 'Windows' : /Mac OS/.test(ua) ? 'Mac' : 'unbekannt';
+    const br = /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /Edg\//.test(ua) ? 'Edge'
+      : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /FxiOS|Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Browser?';
+    const app = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ? 'als App' : 'im Browser';
+    return `${os} · ${br} · ${app}`;
+  }
+  const groesse = (b) => (b == null ? '?' : b >= 1e9 ? (b / 1e9).toFixed(1).replace('.', ',') + ' GB'
+    : b >= 1e8 ? Math.round(b / 1e6) + ' MB' : b >= 1e6 ? (b / 1e6).toFixed(1).replace('.', ',') + ' MB'
+      : b >= 1e3 ? Math.round(b / 1e3) + ' kB' : b + ' Byte');
+
+  // Ursache in Klartext. schritt: 'lesen' | 'zip' | 'xlsx'
+  function fehlerUrsache(schritt, err, file) {
+    const name = err && err.name;
+    if (name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED') return fehlerText(err);
+    if (file && file.size === 0) return 'Die Datei ist leer (0 Byte). Bitte erneut herunterladen oder neu schicken lassen.';
+    if (schritt === 'lesen' && err) {
+      return 'Die Datei ist beschädigt oder nicht vollständig heruntergeladen. Bitte in WhatsApp bzw. '
+        + 'der Mail erneut herunterladen (warten, bis der Download fertig ist) und nochmals wählen.';
+    }
+    if (schritt === 'lesen') {
+      return 'Das ist keine Bilddoku-ZIP und keine Übergabe-Datei (.xlsx). Tipp iPhone: Die Dateien-App '
+        + 'entpackt eine ZIP beim Antippen – dann bitte die ZIP-Datei selbst wählen, nicht den Ordner.';
+    }
+    return (schritt === 'xlsx' ? 'Die Übergabe-Datei' : 'Die ZIP') + ' konnte nicht eingelesen werden: '
+      + ((err && err.message) || String(err || 'unbekannter Fehler'));
+  }
+
+  async function importFehler(schritt, err, file) {
+    if (err) console.error(err);
+    toastWeg();   // „Lese Datei…“ läge sonst über dem Dialog
+    const ursache = fehlerUrsache(schritt, err, file);
+    const sp = await speicherStand();
+    const h = (currentJob && currentJob.header) || {};
+    const bericht = [
+      'NFK Bilddoku – Fehlerbericht',
+      'App-Version: ' + APP_VERSION,
+      'Zeit: ' + new Date().toLocaleString('de-DE'),
+      'Gerät: ' + geraetKurz(),
+      'Datei: ' + (file ? `${file.name || '?'} (${groesse(file.size)}, Typ: ${file.type || 'unbekannt'})` : '–'),
+      'Schritt: ' + ({ lesen: 'Datei lesen', zip: 'ZIP zusammenführen', xlsx: 'Übergabe-Datei einlesen' }[schritt] || schritt),
+      'Fehler: ' + (err ? `${err.name || 'Error'}: ${err.message || err}` : 'Dateiart nicht erkannt'),
+      'Meldung: ' + ursache,
+      'Speicher: ' + (sp ? speicherZeile(sp) : 'unbekannt'),
+      'Auftrag: ' + (h.filiale || (currentJob && currentJob.name) || '–'),
+    ].join('\n');
+    openInfoModal('Import nicht möglich',
+      `<p>${escHtml(ursache)}</p>
+       <p class="hint">Hilft das nicht weiter, schick den Fehlerbericht an Michael – dann ist klar, was passiert ist.</p>
+       <button type="button" class="btn" id="fehlerSendenBtn">📤 Fehlerbericht senden</button>
+       <pre class="fehler-bericht">${escHtml(bericht)}</pre>`);
+    $('#fehlerSendenBtn').onclick = () => fehlerberichtSenden(bericht);
+  }
+
+  async function fehlerberichtSenden(text) {
+    if (navigator.share) {
+      try { await navigator.share({ title: 'NFK Bilddoku – Fehlerbericht', text }); return; } catch (e) {
+        if (e && e.name === 'AbortError') return;   // selbst abgebrochen
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Fehlerbericht kopiert – in WhatsApp einfügen und senden.', 4200);
+    } catch (e) {
+      toast('Bitte den Text im Fenster markieren und kopieren.', 4200);
+    }
+  }
 
   async function importAnyFile(e) {
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
     if (!file) return;
     toast('Lese Datei…');
-    const { art, zip } = await dateiArt(file);
+    const { art, zip, fehler } = await dateiArt(file);
     if (art === 'xlsx') return handoverImport(file);
-    if (art === 'zip') return mergeContribution(zip, file.name);
-    toast(UNBEKANNT);
+    if (art === 'zip') return mergeContribution(zip, file.name, file);
+    await importFehler('lesen', fehler, file);
+  }
+
+  // 'v82.4' -> [82, 4]; vergleicht zwei Versionen zahlenweise (<0: a älter als b).
+  function versionVergleich(a, b) {
+    const zahlen = (v) => String(v || '').replace(/^\D*/, '').split('.').map((n) => parseInt(n, 10) || 0);
+    const x = zahlen(a), y = zahlen(b);
+    for (let i = 0; i < Math.max(x.length, y.length); i++) {
+      const d = (x[i] || 0) - (y[i] || 0);
+      if (d) return d;
+    }
+    return 0;
+  }
+
+  // Warnt, wenn das Paket mit einer anderen App-Version erstellt wurde (ab v83 steht sie im
+  // Paket; fehlt sie, stammt es aus einer älteren Version). Liefert false = Import abbrechen.
+  async function versionOk(paketVersion) {
+    if (paketVersion && versionVergleich(paketVersion, APP_VERSION) === 0) return true;
+    let zeile, rat;
+    if (!paketVersion) {
+      zeile = `Paket: ältere Version (vor v83) · Deine App: <b>${escHtml(APP_VERSION)}</b>`;
+      rat = 'Der Kollege, von dem das Paket stammt, sollte seine App aktualisieren.';
+    } else if (versionVergleich(paketVersion, APP_VERSION) < 0) {
+      zeile = `Paket: <b>${escHtml(paketVersion)}</b> · Deine App: <b>${escHtml(APP_VERSION)}</b>`;
+      rat = 'Der Kollege, von dem das Paket stammt, sollte seine App aktualisieren.';
+    } else {
+      zeile = `Paket: <b>${escHtml(paketVersion)}</b> · Deine App: <b>${escHtml(APP_VERSION)}</b>`;
+      rat = 'Bitte aktualisiere deine App: kurz online gehen, App schließen und neu öffnen.';
+    }
+    return openConfirm('Andere App-Version',
+      `<p>Dieses Paket wurde mit einer anderen App-Version erstellt.</p><p>${zeile}</p>`
+      + `<p>${rat} Alle im Team – auch die Helfer – sollten mit demselben Stand arbeiten.</p>`,
+      'Trotzdem importieren', false, 'Abbrechen');
   }
 
   // Wird von Merge/Handover aufgerufen, sobald der Kopf des Pakets gelesen ist und bevor
@@ -2396,6 +2544,9 @@ const App = (() => {
   //   ziel 'neu'      neuen Auftrag aus dem Paket anlegen (nur ZIP; die .xlsx tut das ohnehin)
   //   ziel 'wechseln' in den vorhandenen Auftrag dieser Filiale (zielJob) wechseln
   async function pruefeHerkunft(paket, ziel, info) {
+    // 0) Gleicher Softwarestand? Michael will, dass alle (auch Helfer) mit derselben Version
+    //    arbeiten – jede Abweichung wird gemeldet, importieren bleibt aber möglich.
+    if (!await versionOk(paket.appVersion)) return null;
     const neuerAuftrag = !!(info && info.neu);
     let eigen = (ziel && ziel.header) || null;
     if (!eigen) return { kopfFelder: [] };   // nichts zu vergleichen
@@ -2486,7 +2637,7 @@ const App = (() => {
     return antwort;
   }
 
-  async function mergeContribution(zip, dateiname) {
+  async function mergeContribution(zip, dateiname, file) {
     toast('Führe Bilder zusammen…');
     try {
       // Offene Eingaben gehören noch zum bisherigen Auftrag – der Import kann gleich wechseln.
@@ -2518,8 +2669,7 @@ const App = (() => {
       await loadStartView();
       toast(teile.join(' · '), 4200);
     } catch (err) {
-      console.error(err);
-      toast('Zusammenführen fehlgeschlagen: ' + (err.message || err));
+      await importFehler('zip', err, file);
     }
   }
 
@@ -2569,13 +2719,12 @@ const App = (() => {
       toast((r.gewechselt ? 'Stand übernommen in: ' : 'Auftrag übernommen: ') + (job.name || '')
         + (entfernt ? ' · leerer Auftrag entfernt' : ''), 4200);
     } catch (err) {
-      console.error(err);
-      toast('Import fehlgeschlagen: ' + (err.message || err));
+      await importFehler('xlsx', err, file);
     }
   }
 
   document.addEventListener('DOMContentLoaded', init);
 
   // Öffentlich für andere Module:
-  return { busy, animOpen, animClose, dreheChev, halteKopf, kopfNachOben, pop, toast, openInfoModal, openFormModal, openConfirm, shareFile, show, getCurrentJob, saveCurrentJob, adoptJob, filialNr, fehlerText };
+  return { APP_VERSION, busy, animOpen, animClose, dreheChev, halteKopf, kopfNachOben, pop, toast, openInfoModal, openFormModal, openConfirm, shareFile, show, getCurrentJob, saveCurrentJob, adoptJob, filialNr, fehlerText };
 })();

@@ -273,7 +273,7 @@ const Docx = (() => {
     ' w:header="567" w:footer="567" w:gutter="0"/>' +
     (mitKopfFuss ? '<w:titlePg/>' : '') + '</w:sectPr>';
 
-  const contentTypes = (mitKopfFuss) =>
+  const contentTypes = (mitKopfFuss, mitDaten) =>
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
     '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
@@ -286,6 +286,7 @@ const Docx = (() => {
       ? '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' +
         '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>'
       : '') +
+    (mitDaten ? '<Override PartName="/customXml/itemProps1.xml" ContentType="application/vnd.openxmlformats-officedocument.customXmlProperties+xml"/>' : '') +
     '</Types>';
 
   // Kopfzeile: kleiner grauer Text mit feiner Linie darunter. Fußzeile rechts „Seite x von y"
@@ -330,6 +331,7 @@ const Docx = (() => {
     let relSeq = 1;    // rId1 ist für styles.xml reserviert -> Bilder ab rId2
     let imgSeq = 0;    // laufende Bildnummer (Dateiname + docPr/cNvPr id)
     let kopfText = null; // gesetzt per kopfFuss() -> Kopf-/Fußzeile ab Seite 2
+    let datenXml = null; // gesetzt per daten() -> unsichtbarer Custom-XML-Teil
 
     const api = {
       // Ein oder mehrere fertige Absatz-XML-Strings anhängen (null/'' wird ignoriert).
@@ -338,6 +340,15 @@ const Docx = (() => {
           if (Array.isArray(x)) api.push(...x);
           else if (x) body.push(x);
         }
+        return api;
+      },
+
+      // Maschinenlesbare Daten unsichtbar mitgeben (Custom-XML-Teil customXml/item1.xml, den
+      // Word beim Speichern behält). Wurzel mit eigenem Namespace, Inhalt JSON als Text –
+      // das AVL-Tool liest daraus die Wochenbericht-Übersicht (ab v83).
+      daten(namespace, wurzel, obj) {
+        datenXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+          + `<${wurzel} xmlns="${escapeAttr(namespace)}">${escapeXml(JSON.stringify(obj))}</${wurzel}>`;
         return api;
       },
 
@@ -550,7 +561,17 @@ const Docx = (() => {
         const zip = new JSZip();
 
         const hf = kopfText != null;
-        zip.file('[Content_Types].xml', contentTypes(hf));
+        zip.file('[Content_Types].xml', contentTypes(hf, !!datenXml));
+        if (datenXml) {
+          zip.file('customXml/item1.xml', datenXml);
+          zip.file('customXml/itemProps1.xml', '<?xml version="1.0" encoding="UTF-8" standalone="no"?>'
+            + '<ds:datastoreItem ds:itemID="{6B3E1C2A-8F4D-4E5B-9A7C-2D1F0E3B4A5C}" '
+            + 'xmlns:ds="http://schemas.openxmlformats.org/officeDocument/2006/customXml"><ds:schemaRefs/></ds:datastoreItem>');
+          zip.file('customXml/_rels/item1.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXmlProps" Target="itemProps1.xml"/>'
+            + '</Relationships>');
+        }
         zip.file('_rels/.rels', ROOT_RELS);
         zip.file('word/styles.xml', STYLES_XML);
         if (hf) {
@@ -573,6 +594,7 @@ const Docx = (() => {
           '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
           (hf ? '<Relationship Id="rIdKopf" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>' +
             '<Relationship Id="rIdFuss" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>' : '') +
+          (datenXml ? '<Relationship Id="rIdDaten" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml" Target="../customXml/item1.xml"/>' : '') +
           media.map((m) =>
             `<Relationship Id="${m.rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${escapeAttr('media/' + m.file)}"/>`
           ).join('') +
