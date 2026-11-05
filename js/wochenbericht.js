@@ -191,7 +191,8 @@ const Wochenbericht = (() => {
       if (o.v === 'teilweise') return { ...o, text: { pflicht: true, label: 'Fehlende Bereiche und/oder Begründung (Pflichtfeld)' }, fotos };
       return o.v === 'fertig' ? { ...o, fotos } : o;
     }) },
-    v1Punkt('f5'),
+    // Ab v83.3 stehen alle Punkte von Abschnitt 3 im Kasten „Baufortschritt“; NWS mit Stufenbalken.
+    { ...v1Punkt('f5'), imKasten: true, stufen: true },
     { id: 'g2', typ: 'fortschritt', titel: 'Ausbau Datendosen', unter: BEREICHE, entfaellt: true },
     // Pflichtfotos, solange die Schränke in Arbeit sind – und in der Woche, in der sie fertig
     // werden. War „fertig“ schon in der Vorwoche, entfällt die Pflicht (fotoPflicht).
@@ -202,9 +203,13 @@ const Wochenbericht = (() => {
       { id: 'ibnrest', label: 'IBN restliche Komponenten' },
     ] },
     // Messung Datenports: ab katalog 2 bei „teilweise“ mit Pflichttext (v82.3).
-    { ...v1Punkt('f4'), optionen: v1Punkt('f4').optionen.map((o) => (o.v !== 'teilweise' ? o
+    { ...v1Punkt('f4'), imKasten: true, optionen: v1Punkt('f4').optionen.map((o) => (o.v !== 'teilweise' ? o
       : { ...o, text: { pflicht: true, label: 'Fehlende Datenports und/oder Begründung (Pflichtfeld)' } })) },
-    v1Punkt('f8'), v1Punkt('f9'), v1Punkt('f10'), v1Punkt('f11'),
+    // Büro, LiLi, Backschema, Headset (v83.3): wie Kabelzug IC statt Ja/Nein; alte Antworten
+    // stellt jaNeinUmstellen() um (ja -> fertig, nein -> nicht). Die ids bleiben (AVL-Tool).
+    ...[['f8', 'Aufbau Büro'], ['f9', 'Aufbau LiLi'], ['f10', 'Digitales Backschema'], ['f11', 'Headset']]
+      .map(([id, titel]) => ({ id, typ: 'wahl', titel, imKasten: true, optionen: GEWERK_OPT.map((o) => (o.v !== 'teilweise' ? o
+        : { ...o, text: { pflicht: true, label: 'Was fehlt noch und/oder Begründung (Pflichtfeld)' } })) })),
   ] }));
 
   // Katalog des geöffneten Berichts.
@@ -346,8 +351,23 @@ const Wochenbericht = (() => {
   const bereichVon = (a, uid) => (a.bereiche || {})[uid] || {};
   // Stand eines Gewerks: „3 von 6 fertig · 1 teilweise“; entfallende Bereiche zählen nicht.
   // anteilFertig/anteilTeil für den Balken (0…1).
+  // NWS eingebracht: Stufen des Balkens (v83.3) – erreicht ab der jeweiligen Option.
+  const NWS_STUFEN = [['angeliefert', 'angeliefert'], ['in Filiale', 'filiale'], ['im Serverraum', 'serverraum']];
   function fortschrittStand(p, a) {
     a = a || {};
+    // Auswahlpunkt (Kabelzug IC, Messung, NWS, Büro …): Stand aus der gewählten Option;
+    // grün füllt den Balken grün, gelb gelb, grau bleibt leer.
+    if (p.typ === 'wahl') {
+      const o = p.optionen.find((x) => x.v === a.status);
+      if (!o) return { text: 'noch nicht ausgefüllt', ampel: 'rot', anteilFertig: 0, anteilTeil: 0 };
+      const st = { text: o.label, ampel: o.ampel, anteilFertig: o.ampel === 'gruen' ? 1 : 0, anteilTeil: o.ampel === 'gelb' ? 1 : 0 };
+      if (p.stufen) {
+        const idx = p.optionen.findIndex((x) => x.v === a.status);   // 0 = noch nicht angeliefert
+        st.stufen = NWS_STUFEN.map(([label], i) => ({ label, an: i < idx }));
+        st.farbe = o.ampel === 'gruen' ? 'f' : 't';
+      }
+      return st;
+    }
     if (a.status === 'fertig') return { text: 'fertig', ampel: 'gruen', anteilFertig: 1, anteilTeil: 0 };
     if (a.status === 'nicht') return { text: 'noch nicht begonnen', ampel: 'grau', anteilFertig: 0, anteilTeil: 0 };
     if (a.status !== 'teilweise') return { text: 'noch nicht ausgefüllt', ampel: 'rot', anteilFertig: 0, anteilTeil: 0 };
@@ -561,8 +581,10 @@ const Wochenbericht = (() => {
   }
 
   // Balken für den Stand eines Gewerks (App): grün = fertig, gelb = teilweise.
-  const balkenHtml = (st) => `<div class="wb-fs-bar"><i class="f" style="width:${(st.anteilFertig * 100).toFixed(1)}%"></i>`
-    + `<i class="t" style="width:${(st.anteilTeil * 100).toFixed(1)}%"></i></div>`;
+  const balkenHtml = (st) => (st.stufen
+    ? `<div class="wb-fs-bar stufen">${st.stufen.map((x) => `<i class="${x.an ? st.farbe : ''}">${escHtml(x.label)}</i>`).join('')}</div>`
+    : `<div class="wb-fs-bar"><i class="f" style="width:${(st.anteilFertig * 100).toFixed(1)}%"></i>`
+    + `<i class="t" style="width:${(st.anteilTeil * 100).toFixed(1)}%"></i></div>`);
 
   // Gewerk (Typ 'fortschritt'): Status, bei „teilweise“ je Unterpunkt eine Zeile.
   async function fortschrittKarte(card, p, a) {
@@ -1213,6 +1235,7 @@ const Wochenbericht = (() => {
   // drei schattierten Zellen (grün fertig, gelb teilweise, grau Rest). breite in Twips.
   const BALKEN_FARBEN = ['3A9D5D', 'E0A100', 'DDE2E7'];
   function balkenXml(st, breite) {
+    if (st.stufen) return stufenXml(st, breite);
     const anteile = [st.anteilFertig, st.anteilTeil, Math.max(0, 1 - st.anteilFertig - st.anteilTeil)];
     const teile = anteile.map((x, i) => [Math.round(x * breite), BALKEN_FARBEN[i]]).filter(([w]) => w > 0);
     const rest = breite - teile.reduce((s, [w]) => s + w, 0);
@@ -1228,6 +1251,28 @@ const Wochenbericht = (() => {
       + '<w:tblCellMar><w:left w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tblCellMar></w:tblPr>'
       + `<w:tblGrid>${teile.map(([w]) => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>`
       + `<w:tr><w:trPr><w:trHeight w:val="220" w:hRule="exact"/></w:trPr>${zellen}</w:tr></w:tbl>` + leer(2);
+  }
+  // NWS: drei gleich breite, beschriftete Abschnitte; erreichte gefüllt (gelb, im Serverraum grün).
+  function stufenXml(st, breite) {
+    const w = Math.floor(breite / 3);
+    const breiten = [w, w, breite - 2 * w];
+    const weiss = (s) => `<w:${s} w:val="single" w:sz="12" w:space="0" w:color="FFFFFF"/>`;
+    const zellen = st.stufen.map((x, i) => {
+      const fill = x.an ? BALKEN_FARBEN[st.farbe === 'f' ? 0 : 1] : BALKEN_FARBEN[2];
+      const farbe = x.an ? 'FFFFFF' : '5A6672';
+      return `<w:tc><w:tcPr><w:tcW w:w="${breiten[i]}" w:type="dxa"/><w:tcBorders>${weiss('left')}${weiss('right')}</w:tcBorders>`
+        + `<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/><w:vAlign w:val="center"/></w:tcPr>`
+        + '<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/></w:pPr>'
+        + `<w:r><w:rPr><w:b/><w:color w:val="${farbe}"/><w:sz w:val="14"/></w:rPr><w:t>${x.label}</w:t></w:r></w:p></w:tc>`;
+    }).join('');
+    const ohne = ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']
+      .map((s) => `<w:${s} w:val="none" w:sz="0" w:space="0" w:color="auto"/>`).join('');
+    return '<w:tbl><w:tblPr>'
+      + `<w:tblW w:w="${breite}" w:type="dxa"/><w:tblBorders>${ohne}</w:tblBorders><w:tblLayout w:type="fixed"/>`
+      + '<w:tblCellMar><w:left w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tblCellMar></w:tblPr>'
+      + `<w:tblGrid>${breiten.map((x) => `<w:gridCol w:w="${x}"/>`).join('')}</w:tblGrid>`
+      + `<w:tr><w:trPr><w:trHeight w:val="260" w:hRule="exact"/></w:trPr>${zellen}</w:tr></w:tbl>`
+      + '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/><w:rPr><w:sz w:val="2"/></w:rPr></w:pPr></w:p>';
   }
   // Zeichen und Farbe je Status eines Unterpunkts im Detailteil.
   const BEREICH_WORD = {
@@ -1461,11 +1506,27 @@ const Wochenbericht = (() => {
     }
   }
 
+  // v83.3: Büro, LiLi, Backschema, Headset haben in katalog 2 „noch nicht begonnen / teilweise /
+  // fertig“ statt Ja/Nein. Vorhandene Antworten: ja -> fertig, nein -> nicht. Liefert true bei Änderung.
+  function jaNeinUmstellen(job) {
+    let geaendert = false;
+    for (const b of liste(job)) {
+      if (b.katalog !== 2 || !b.antworten) continue;
+      for (const pid of ['f8', 'f9', 'f10', 'f11']) {
+        const a = b.antworten[pid];
+        const neu = a && { ja: 'fertig', nein: 'nicht' }[a.status];
+        if (neu) { a.status = neu; geaendert = true; }
+      }
+    }
+    return geaendert;
+  }
+
   // ------------------------------------------------------------- Einstieg
   async function enter() {
     const job = App.getCurrentJob();
     if (!job) return;
     try { await altFotosUmziehen(job); } catch (e) { console.warn('Fotos „Serverschränke" umziehen fehlgeschlagen', e); }
+    if (jaNeinUmstellen(job)) await App.saveCurrentJob();
     // Rückkehr aus einem anderen Bereich: den zuletzt geöffneten Bericht weiterzeigen.
     // Nach einem Auftragswechsel hat reset() ihn verworfen – dann die aktuelle KW.
     if (current) { await zaehleFotos(); await render(); return; }

@@ -631,6 +631,14 @@ textarea.wb-notiztext { min-height: 66px; }
 .wb-fs-bar i { display: block; height: 100%; }
 .wb-fs-bar i.f { background: var(--ok); }
 .wb-fs-bar i.t { background: #e0a100; }
+/* NWS eingebracht (v83.3): drei beschriftete Stufen */
+.wb-fs-bar.stufen { height: 18px; border-radius: 6px; gap: 2px; background: none; }
+.wb-fs-bar.stufen i {
+  flex: 1; background: #dde2e7; color: var(--muted); font-style: normal; font-size: 11px; font-weight: 700;
+  line-height: 18px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wb-fs-bar.stufen i.f { background: var(--ok); color: #fff; }
+.wb-fs-bar.stufen i.t { background: #e0a100; color: #fff; }
 .wb-fs-mini { margin-top: 10px; font-size: 14px; font-weight: 700; color: var(--muted); }
 .wb-fs-mini .wb-fs-bar { margin-top: 4px; }
 .wb-bereiche { margin-top: 12px; }
