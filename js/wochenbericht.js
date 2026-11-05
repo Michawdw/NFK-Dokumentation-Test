@@ -1326,8 +1326,10 @@ const Wochenbericht = (() => {
       doc.push(Docx.table(frows, WF), Docx.pEmpty());
     }
 
-    // Ampel-Übersicht
+    // Ampel-Übersicht – ab katalog 2 (mit Baufortschritt-Tabelle) immer auf Seite 2 (v83.5).
+    const uebersichtStart = doc.mark();
     doc.push(Docx.pBar('Übersicht', BLAU));
+    if (gewerke.length) doc.pageBreakBefore(uebersichtStart);
     const W = [4300, 4000, 1338];
     const rows = [{ header: true, cells: [
       { text: 'Punkt', bold: true, fill: 'DCE6F1', color: BLAU },
