@@ -1360,9 +1360,10 @@ const Wochenbericht = (() => {
           { text: am.zeichen, fill: am.fill, color: am.color, bold: true, align: 'center' }] });
       }
     });
-    doc.push(Docx.table(rows, W), Docx.pEmpty());
+    // Legende direkt unter der Tabelle, ohne Leerzeile (v83.6).
+    doc.push(Docx.table(rows, W));
     doc.push(Docx.pStyled('✓ erledigt / in Ordnung   ◐ teilweise / in Arbeit   ! kritisch – bitte beachten   – neutral',
-      { sz: 16, color: '5A6672' }));
+      { sz: 16, color: '5A6672', before: 40, after: 0 }));
 
     // Abschnitte im Detail – jeder Punkt als Karte (Rahmen, Kopf mit Nummer und Status).
     // Seitenumbruch-Regel (Michael): Passt ein Abschnitt nicht mehr vollständig auf die
