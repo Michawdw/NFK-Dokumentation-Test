@@ -149,9 +149,10 @@ const Docx = (() => {
   // Farbiger Abschnitts-Balken über die ganze Textbreite (Absatzschattierung), weiße
   // fette Schrift. keepNext hält ihn mit dem folgenden Inhalt auf einer Seite.
   // anker (optional): Textmarke, auf die z. B. eine Übersichtstabelle verlinken kann.
-  const pBar = (str, fill, anker) =>
+  // vorher: Abstand über dem Balken (Standard 280; 0 oben auf einer neuen Seite).
+  const pBar = (str, fill, anker, vorher) =>
     `<w:p><w:pPr><w:keepNext/><w:shd w:val="clear" w:color="auto" w:fill="${fill || '1F4E78'}"/>` +
-    '<w:spacing w:before="280" w:after="120"/></w:pPr>' +
+    `<w:spacing w:before="${vorher == null ? 280 : vorher}" w:after="120"/></w:pPr>` +
     bookmark(anker, `<w:r><w:rPr><w:b/><w:color w:val="FFFFFF"/><w:sz w:val="26"/></w:rPr>${runText(' ' + str)}</w:r>`) + '</w:p>';
 
   // Setzt <w:keepNext/> in jeden Absatz eines XML-Stücks (ohneLetzten: den letzten Absatz
@@ -177,14 +178,16 @@ const Docx = (() => {
   // color, sz, align, anker }] }], widths: Spaltenbreiten in Twips (Summe = Textbreite 9638).
   // Kopfzeilen wiederholen sich auf jeder Seite (tblHeader). anker: Text verlinkt auf diese
   // Textmarke (Aussehen bleibt gleich).
-  function table(rows, widths) {
+  // opts.abstand: Abstand über/unter dem Text je Zelle (Standard 40; kompakter z. B. 30).
+  function table(rows, widths, opts) {
+    const ab = (opts && opts.abstand != null) ? opts.abstand : 40;
     const total = widths.reduce((a, b) => a + b, 0);
     const line = (s) => `<w:${s} w:val="single" w:sz="4" w:space="0" w:color="BFC5CC"/>`;
     const borders = ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(line).join('');
     const cellPara = (c) => {
       const rPr = (c.bold ? '<w:b/>' : '') + (c.color ? `<w:color w:val="${c.color}"/>` : '')
         + (c.sz ? `<w:sz w:val="${c.sz}"/>` : '');
-      return `<w:p>${pPr(c.align, '<w:spacing w:before="40" w:after="40"/>')}` +
+      return `<w:p>${pPr(c.align, `<w:spacing w:before="${ab}" w:after="${ab}"/>`)}` +
         hyperlinkRun(c.anker, `<w:r>${rPr ? `<w:rPr>${rPr}</w:rPr>` : ''}${runText(c.text)}</w:r>`) + '</w:p>';
     };
     const tr = (r) => '<w:tr>' + (r.header ? '<w:trPr><w:tblHeader/><w:cantSplit/></w:trPr>' : '<w:trPr><w:cantSplit/></w:trPr>') +

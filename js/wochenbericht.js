@@ -1328,7 +1328,7 @@ const Wochenbericht = (() => {
 
     // Ampel-Übersicht – ab katalog 2 (mit Baufortschritt-Tabelle) immer auf Seite 2 (v83.5).
     const uebersichtStart = doc.mark();
-    doc.push(Docx.pBar('Übersicht', BLAU));
+    doc.push(Docx.pBar('Übersicht', BLAU, null, gewerke.length ? 0 : undefined));
     if (gewerke.length) doc.pageBreakBefore(uebersichtStart);
     const W = [4300, 4000, 1338];
     const rows = [{ header: true, cells: [
@@ -1361,7 +1361,8 @@ const Wochenbericht = (() => {
       }
     });
     // Legende direkt unter der Tabelle, ohne Leerzeile (v83.6).
-    doc.push(Docx.table(rows, W));
+    // Etwas kompakter (v83.7), damit Tabelle und Legende zusammen auf Seite 2 passen.
+    doc.push(Docx.table(rows, W, gewerke.length ? { abstand: 30 } : undefined));
     doc.push(Docx.pStyled('✓ erledigt / in Ordnung   ◐ teilweise / in Arbeit   ! kritisch – bitte beachten   – neutral',
       { sz: 16, color: '5A6672', before: 40, after: 0 }));
 
