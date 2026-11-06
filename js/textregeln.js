@@ -96,6 +96,8 @@ const TEXTREGELN = {
     'instore communication': 'In-Store-Communication (I.C.)',
     'in-store communication': 'In-Store-Communication (I.C.)',
     'in store communication': 'In-Store-Communication (I.C.)',
+    'instore-communication': 'In-Store-Communication (I.C.)',
+    'instore comunication': 'In-Store-Communication (I.C.)',
     'i.c.': 'I.C.', 'i.c': 'I.C.', 'ic': 'I.C.',
     'sco kassen': 'SCO-Kassen', 'sco-kassen': 'SCO-Kassen', 'sco': 'SCO',
     'exitgate': 'Exit Gate', 'exit gate': 'Exit Gate', 'e-gate': 'Exit Gate',
@@ -172,6 +174,24 @@ const TEXTREGELN = {
     ['\\s+UND\\s+', ' und '],
     // „Access Points (APs)" wurde zu „Access Points (AP) (Access Points (AP))"
     ['Access Points \\(AP\\)\\s*\\(Access Points \\(AP\\)\\)', 'Access Points (AP)'],
+    // I.C. = In-Store-Communication (v83.8). Die Ausschreibung steht bei allgemeiner Nennung;
+    // mit Nummer („I.C. 1") und in zusammengesetzten Begriffen („I.C.-Brücken", „I.C. Leitungen",
+    // „Lautsprecher I.C.") bleibt die Kurzform. Reihenfolge wichtig; zweiter Lauf ändert nichts.
+    // „instore communication (i.c.)" wurde zu „… (I.C.) (I.C.)"
+    ['In-Store-Communication \\(I\\.C\\.\\)(?:\\s*\\(I\\.C\\.\\))+', 'In-Store-Communication (I.C.)'],
+    ['In-Store-Communication(?!\\s*\\(I\\.C\\.\\))', 'In-Store-Communication (I.C.)'],
+    ['(?<![\\p{L}(.-])(?<!Lautsprecher\\s)I\\.C\\.(?!-|\\s*\\d|\\s*\\(|\\s+(?:Brücke|Strecke|Lautsprecher|Leitung|Kabel|Strang|Anschl|Dose|Modul|Komponente|System|Technik))',
+      'In-Store-Communication (I.C.)'],
+    // „für In-Store-Communication" -> „für die …", „von …" -> „von der …"
+    ['(?<![\\p{L}])(für) In-Store-Communication \\(I\\.C\\.\\)', '$1 die In-Store-Communication (I.C.)'],
+    ['(?<![\\p{L}])(von) In-Store-Communication \\(I\\.C\\.\\)', '$1 der In-Store-Communication (I.C.)'],
+    // I.C. = Kugellautsprecher im Verkaufsraum, keine Datendosen (v83.9): „Ausbau IC" meint die
+    // I.C. selbst, die Standardergänzung „der Datendosen" (aktionen) passt dort nicht.
+    ['Ausbau der Datendosen für die In-Store-Communication \\(I\\.C\\.\\)', 'Ausbau der In-Store-Communication (I.C.)'],
+    ['Ausbau der Datendosen für I\\.C\\.\\s+(?=Strecke|Kabel|Leitung)', 'Ausbau der I.C. '],
+    // Die I.C. hängt an Y(St)Y-Leitungen, nicht an Datenleitungen (v83.10, Michael).
+    ['Datenleitungen für die In-Store-Communication \\(I\\.C\\.\\)', 'Y(St)Y-Leitungen für die In-Store-Communication (I.C.)'],
+    ['der Datenleitungen für weiterer I\\.C\\. Leitungen', 'weiterer Y(St)Y-Leitungen für die In-Store-Communication (I.C.)'],
   ],
 
   // Zeilen, die mit einer Grundform enden („Material im Serverraum zwischenlagern"),
