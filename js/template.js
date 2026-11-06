@@ -126,6 +126,19 @@ const Structure = (() => {
   // offen = Bilder, die unter „aus alter Vorlage" weitergeführt werden.
   async function uebernehmeStruktur(job, nodes, label) {
     const alt = new Map(getMerged().map((n) => [n.key, n]));
+    // Übernommener Auftrag, dieselbe Vorlage neu geladen: Positionen, die sie nicht kennt,
+    // können eigene Namen des Vorteams sein (Pakete von vor v83.11 kennzeichnen sie nicht).
+    // Sie bleiben als „von Kollege“. Bei einem bewussten Wechsel der Vorlage gilt das nicht.
+    if (job.uebernommen && label === job.selectedTemplate) {
+      const neu = new Set(nodes.map((n) => n.key));
+      const index = Merge.buildNodeIndex(nodes);
+      if (!job.customNames) job.customNames = [];
+      for (const n of job.structure || []) {
+        if (neu.has(n.key) || job.customNames.some((c) => c.key === n.key)) continue;
+        if (Merge.resolveNode(Object.assign({ nodeKey: n.key }, n), index, null)) continue;
+        job.customNames.push(Object.assign({}, n, { source: 'merge' }));
+      }
+    }
     job.structure = nodes;
     job.selectedTemplate = label;
     // Fassung festhalten: daran erkennt die App später, ob eine neue Vorlage bereitsteht.
@@ -351,6 +364,19 @@ const Structure = (() => {
     return { nodes, bericht };
   }
 
+  // Schlüssel aller Positionen einer Vorlage; null, wenn sie nicht lesbar ist (offline,
+  // umbenannt, kein Name angegeben).
+  async function vorlagenKeys(name) {
+    if (!name || name === EXTERNAL_LABEL || name === HANDOVER_LABEL) return null;
+    try {
+      const wb = await katalogWorkbook(false);
+      return wb.getWorksheet(name) ? new Set(parseSheet(wb, name).map((n) => n.key)) : null;
+    } catch (e) {
+      console.warn('Vorlage nicht lesbar:', e);
+      return null;
+    }
+  }
+
   async function getSelectedTemplate() {
     const job = App.getCurrentJob();
     return (job && job.selectedTemplate) || null;
@@ -395,6 +421,6 @@ const Structure = (() => {
   return {
     SEP, makeKey, unterKey, isSkipped, parseWorkbook, importFile, addCustomName, getMerged, groupForDisplay,
     uebernehmeStruktur, neueFassung, uebernehmeFassung, spaeter,
-    listTemplates, importFromCatalog, getSelectedTemplate, EXTERNAL_LABEL, HANDOVER_LABEL, loadExcelJS,
+    listTemplates, importFromCatalog, vorlagenKeys, getSelectedTemplate, EXTERNAL_LABEL, HANDOVER_LABEL, loadExcelJS,
   };
 })();

@@ -33,6 +33,16 @@ const Handover = (() => {
     return Array.from(map.values());
   }
 
+  // Spalte „Herkunft“ der Übergabe (ab v83.11): eigene Namen bleiben so beim Empfänger eigene
+  // Namen. Ohne sie landeten sie in dessen Struktur und verschwanden beim nächsten Laden der
+  // Vorlage. Leer = Position aus der Vorlage.
+  const HERKUNFT_TEXT = { custom: 'eigen', merge: 'Kollege', alt: 'alte Vorlage' };
+  const HERKUNFT_WERT = { eigen: 'custom', kollege: 'merge', 'alte vorlage': 'alt' };
+  function herkunftVon(job, key) {
+    const c = (job.customNames || []).find((x) => x.key === key);
+    return c ? (HERKUNFT_TEXT[c.source] || HERKUNFT_TEXT.custom) : '';
+  }
+
   async function enrichForJob(job, nodes) {
     const counts = await DB.countPhotosByNode(job.id);   // eine Abfrage statt einer je Position
     return nodes.map((n) => {
@@ -92,14 +102,14 @@ const Handover = (() => {
     }))]);
 
     const s2 = wb.addWorksheet('Uebersicht');
-    s2.columns = [{ width: 20 }, { width: 18 }, { width: 26 }, { width: 12 }, { width: 11 }, { width: 11 }];
-    s2.addRow(['Oberordner', 'Unterordner', 'Bildname', 'Pflichtanzahl', 'Ist-Anzahl', 'Status']);
+    s2.columns = [{ width: 20 }, { width: 18 }, { width: 26 }, { width: 12 }, { width: 11 }, { width: 11 }, { width: 12 }];
+    s2.addRow(['Oberordner', 'Unterordner', 'Bildname', 'Pflichtanzahl', 'Ist-Anzahl', 'Status', 'Herkunft']);
     s2.getRow(1).font = { bold: true };
     for (const e of enriched) {
       s2.addRow([e.n.ober, e.n.unter || '', e.n.bildname, e.n.pflicht, e.ist,
-        e.skipped ? 'nicht benötigt' : (e.done ? 'erledigt' : 'offen')]);
+        e.skipped ? 'nicht benötigt' : (e.done ? 'erledigt' : 'offen'), herkunftVon(job, e.n.key)]);
     }
-    s2.autoFilter = 'A1:F1';
+    s2.autoFilter = 'A1:G1';
     s2.views = [{ state: 'frozen', ySplit: 1 }];
 
     return wb.xlsx.writeBuffer();
@@ -117,7 +127,7 @@ const Handover = (() => {
   // Alle Quellen (Excel-Blatt, uebersicht.csv) werden auf dieselbe Zeilenform gebracht:
   // { ober, unter, bildname, pflicht, ist, status }. applyHandoverData() kennt nur diese.
 
-  function toRow(ober, unter, bildname, pflichtRaw, istRaw, statusRaw) {
+  function toRow(ober, unter, bildname, pflichtRaw, istRaw, statusRaw, herkunftRaw) {
     if (!bildname) return null;
     let pflicht = parseInt(pflichtRaw, 10); if (!Number.isFinite(pflicht) || pflicht < 0) pflicht = 1;
     let ist = parseInt(istRaw, 10); if (!Number.isFinite(ist) || ist < 0) ist = 0;
@@ -128,6 +138,7 @@ const Handover = (() => {
       // (verwaiste Bilder). Solche Positionen gehören nicht in die Vorlage, sondern als
       // eigener Name in den Auftrag – sonst wüchse die Vorlage bei jedem Import.
       fremd: String(statusRaw || '').toLowerCase().includes('nicht mehr in vorlage'),
+      herkunft: HERKUNFT_WERT[String(herkunftRaw || '').trim().toLowerCase()] || '',
     };
   }
 
@@ -139,18 +150,22 @@ const Handover = (() => {
   function rowsFromSheet(ws) {
     const rows = [];
     let headerSeen = false;
+    let mitHerkunft = false;   // Pakete von vor v83.11 haben die Spalte nicht
     ws.eachRow({ includeEmpty: false }, (row) => {
       const ober = cellText(row.getCell(1)).trim();
       const unter = cellText(row.getCell(2)).trim();
       const bildname = cellText(row.getCell(3)).trim();
       if (!headerSeen) {
         headerSeen = true;
-        if (isHeaderRow(ober, unter, bildname)) return;
+        if (isHeaderRow(ober, unter, bildname)) {
+          mitHerkunft = cellText(row.getCell(7)).trim() === 'Herkunft';
+          return;
+        }
       }
       const r = toRow(ober, unter, bildname,
         cellText(row.getCell(4)).trim(), cellText(row.getCell(5)).trim(),
-        cellText(row.getCell(6)).trim());
-      if (r) rows.push(r);
+        cellText(row.getCell(6)).trim(), cellText(row.getCell(7)).trim());
+      if (r) { r.mitHerkunft = mitHerkunft; rows.push(r); }
     });
     return rows;
   }
@@ -315,7 +330,18 @@ const Handover = (() => {
       const skipNodes = [];
       for (const r of rows) {
         const key = o.mapKey ? o.mapKey(r) : Structure.makeKey(r.ober, r.unter, r.bildname);
-        if (!key) continue; // Position gibt es hier nicht – kein toter Zähler-Eintrag
+        if (!key) {
+          // Position gibt es hier nicht – kein toter Zähler-Eintrag. Ein eigener Name des
+          // Kollegen ohne Bilder kommt aber mit (Namen mit Bildern ergänzt merge.js selbst).
+          if (r.herkunft && !r.ist) {
+            const k = Structure.makeKey(r.ober, r.unter, r.bildname);
+            if (!job.customNames) job.customNames = [];
+            if (!job.customNames.some((c) => c.key === k)) {
+              job.customNames.push({ key: k, ober: r.ober, unter: r.unter, bildname: r.bildname, pflicht: r.pflicht, source: r.herkunft });
+            }
+          }
+          continue;
+        }
         // Nur echte Zähler speichern: sonst stünden nach jedem Import mehrere hundert
         // Nullwerte im Auftrag (bei 370 Positionen gut 20 KB, die bei jedem Speichern
         // mitgeschrieben werden) – ohne jede Wirkung, denn 0 ist der Standard.
@@ -342,6 +368,13 @@ const Handover = (() => {
       return { job, neu: false, positionen: rows.length };
     }
 
+    // Pakete von vor v83.11 sagen nicht, was eigene Namen sind: Dann gilt als eigener Name,
+    // was die genannte Vorlage nicht enthält (null = Vorlage nicht lesbar, z. B. offline).
+    const ohneHerkunft = !rows.some((r) => r.mitHerkunft);
+    const vorlage = ohneHerkunft ? await Structure.vorlagenKeys(kv.vorlage) : null;
+    const istEigen = (r, key) => r.fremd || !!r.herkunft || (!!vorlage && !vorlage.has(key));
+    const eigenAlle = rows.every((r) => istEigen(r, Structure.makeKey(r.ober, r.unter, r.bildname)));
+
     const structure = [];
     const fremdNodes = [];
     const priorCounts = {};
@@ -349,7 +382,7 @@ const Handover = (() => {
     for (const r of rows) {
       const key = Structure.makeKey(r.ober, r.unter, r.bildname);
       const node = { key, ober: r.ober, unter: r.unter, bildname: r.bildname, pflicht: r.pflicht };
-      if (r.fremd) fremdNodes.push(Object.assign(node, { source: 'merge' }));
+      if (istEigen(r, key) && !eigenAlle) fremdNodes.push(Object.assign(node, { source: r.herkunft || 'merge' }));
       else structure.push(Object.assign(node, { source: 'template' }));
       if (r.ist > 0) priorCounts[key] = r.ist; // Nullwerte wären wirkungslose Altlast
       if (istSkip(r)) skippedNodes.push(key);
@@ -381,8 +414,24 @@ const Handover = (() => {
       };
     }
 
-    job.structure = structure;
     job.customNames = job.customNames || [];
+    if (!neu) {
+      // Vorhandene Positionen, die das Paket nicht kennt, nicht verlieren: Mit Bildern oder
+      // Zähler bleiben sie immer, in übernommenen Aufträgen auch ohne – dort können es eigene
+      // Namen des Vorteams sein. Umbenannte Vorlagen-Positionen zählen nicht als fehlend.
+      const neueKeys = new Set([...structure, ...fremdNodes].map((n) => n.key));
+      const fotos = await DB.countPhotosByNode(job.id);
+      const index = Merge.buildNodeIndex(structure);
+      for (const n of job.structure || []) {
+        if (neueKeys.has(n.key) || job.customNames.some((c) => c.key === n.key)) continue;
+        const zaehler = (job.priorCounts && job.priorCounts[n.key]) || 0;
+        const inhalt = zaehler > 0 || (fotos.get(n.key) || 0) > 0;
+        if (!inhalt && !(job.uebernommen && !Merge.resolveNode(Object.assign({ nodeKey: n.key }, n), index, null))) continue;
+        job.customNames.push(Object.assign({}, n, { source: 'merge' }));
+        if (zaehler) priorCounts[n.key] = zaehler;
+      }
+    }
+    job.structure = structure;
     for (const f of fremdNodes) {
       if (!job.customNames.some((c) => c.key === f.key)) job.customNames.push(f);
     }
