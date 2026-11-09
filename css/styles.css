@@ -376,6 +376,10 @@ fieldset.techs legend { font-weight: 700; padding: 0 6px; }
 .dr-times { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
 .dr-time { min-width: 0; }
 .dr-time-label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); }
+/* Nachtschicht: Ende < Start = Ende am Folgetag (v83.12) */
+.diary-row .dr-folgetag { margin: 6px 0 0; padding: 6px 8px; font-size: 12.5px; line-height: 1.35;
+  background: #fff6db; border-left: 3px solid #e0a100; border-radius: 4px; color: #5a4500; }
+.diary-row .dr-folgetag[hidden] { display: none; }
 /* Textfeld (Zahlen-Tastatur) + Uhr-Knopf rechts im Feld. Das echte Zeitfeld liegt
    unsichtbar darunter und liefert nur die Zeitauswahl (showPicker). */
 .dr-time-box { position: relative; display: block; margin-top: 6px; }

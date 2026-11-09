@@ -1630,11 +1630,70 @@ const App = (() => {
   function diaryAufHeute() {
     diaryDate = Datum.heute();
     diaryDatumAutomatisch = true;
+    diaryNachtschicht = false;
+  }
+
+  // ---- Nachtschicht (v83.12) ----
+  // Eine Schicht über Mitternacht (z. B. 20:00–04:00) steht in EINEM Bautagebuch mit dem
+  // Datum des Schichtbeginns; „Ende kleiner als Start" heißt „Ende am Folgetag". Die Vorlage
+  // des Auftraggebers darf nicht geändert werden, deshalb vermerkt der Export das Enddatum in
+  // der Bemerkung (bautagebuch.js). Das AVL-Tool rechnet Ende < Start schon mit +24 h.
+  // Problem ohne diese Logik: Die Techniker tragen meist NACH der Schicht ein. Um 04:00 öffnete
+  // die App aber den neuen Tag – der Eintrag landete unter dem falschen Datum.
+  const NACHT_BIS_STUNDE = 8;   // bis 08:00 gilt ein Öffnen als „nach der Nachtschicht"
+  let diaryNachtschicht = false; // true: Vortag wurde als Nachtschicht geöffnet
+  let nachtAntwort = null;       // { tag, datum }: Antwort auf die Frage, gilt für diesen Tag
+
+  const endetAmFolgetag = (r) => !!(r.start && r.ende && r.ende < r.start);
+  // Vor Mitternacht begonnen und noch offen (oder schon mit Ende nach Mitternacht).
+  // Start ab 12:00, damit eine nicht abgeschlossene Tagschicht nicht als Nachtschicht gilt.
+  const offeneNachtschicht = (tag) => ((tag && tag.rows) || [])
+    .some((r) => r.start && r.start >= '12:00' && (!r.ende || r.ende < r.start));
+
+  // Welcher Tag soll beim Öffnen gelten? Liefert das Datum (heute oder gestern).
+  async function diaryStarttag() {
+    const jetzt = new Date();
+    const heute = Datum.heute(jetzt);
+    if (!currentJob || jetzt.getHours() >= NACHT_BIS_STUNDE) return heute;
+    if (await DB.getDiary(currentJob.id, heute)) return heute;   // heute schon begonnen
+    const gestern = Datum.plusTage(heute, -1);
+    if (nachtAntwort && nachtAntwort.tag === heute) return nachtAntwort.datum;
+    if (offeneNachtschicht(await DB.getDiary(currentJob.id, gestern))) {
+      toast('Nachtschicht: Bautagebuch vom ' + fmtDate(gestern) + ' geöffnet', 3500);
+      return gestern;
+    }
+    const ja = await openConfirm('Nachtschicht?',
+      `<p>Es ist nach Mitternacht. Gehört dein Eintrag zur Schicht von gestern
+       (<b>${fmtDate(gestern)}</b>)?</p>
+       <p class="hint">Eine Nachtschicht wird mit dem Datum des Schichtbeginns eingetragen.
+       Liegt das Ende nach Mitternacht, vermerkt die App das Enddatum in der Bemerkung.</p>`,
+      'Ja, Schicht vom ' + fmtDate(gestern).slice(0, 6), false,
+      'Nein, heute (' + fmtDate(heute).slice(0, 6) + ')');
+    nachtAntwort = { tag: heute, datum: ja ? gestern : heute };
+    return nachtAntwort.datum;
+  }
+
+  // Hinweis unter den Zeiten: „Ende am Folgetag (12.11.2026) – Arbeitszeit 7:30 h".
+  function updateFolgetag() {
+    for (const d of $$('#diaryRows .diary-row')) {
+      const r = { start: timeVal(d.querySelector('.dr-start')), ende: timeVal(d.querySelector('.dr-ende')) };
+      const el = d.querySelector('.dr-folgetag');
+      if (!el) continue;
+      el.hidden = !(endetAmFolgetag(r) && diaryDate);
+      if (el.hidden) continue;
+      const min = (t) => { const [h, m] = (t || '0:0').split(':').map(Number); return h * 60 + m; };
+      const netto = min(r.ende) + 1440 - min(r.start) - min(timeVal(d.querySelector('.dr-pause')));
+      el.textContent = `Ende am Folgetag (${fmtDate(Datum.plusTage(diaryDate, 1))}) – Arbeitszeit `
+        + `${Math.floor(netto / 60)}:${String(netto % 60).padStart(2, '0')} h. `
+        + 'Das Enddatum kommt automatisch in die Bemerkung.';
+    }
   }
 
   async function initDiaryView() {
     const f = $('#diaryForm');
     diaryAufHeute();
+    const start = await diaryStarttag();
+    if (start !== diaryDate) { diaryDate = start; diaryNachtschicht = true; }
     f.datum.value = diaryDate;
     await loadDiaryForDate(diaryDate);
     await renderDiaryArchive();
@@ -1892,6 +1951,7 @@ const App = (() => {
         ${timeFieldHtml('dr-ende', 'Ende', r.ende)}
         ${timeFieldHtml('dr-pause', 'Pause', r.pause)}
       </div>
+      <p class="dr-folgetag" hidden></p>
       <textarea class="dr-bem" rows="1" placeholder="Bemerkung">${escHtml(r.bemerkung || '')}</textarea>`;
     // Namensauswahl aus der Technikerliste; wer am selben Tag schon eingetragen ist, fehlt dort.
     for (const feld of div.querySelectorAll('.dr-name, .dr-name2')) {
@@ -1922,6 +1982,7 @@ const App = (() => {
     const add = $('#diaryAddRow');
     if (add) add.hidden = rows.length >= MAX_TECH;
     updateZweitname();
+    updateFolgetag();
   }
 
   // „+ 2. Techniker" nur, wenn alle 5 Blöcke Name + Start + Ende haben (Pause darf fehlen).
@@ -2030,10 +2091,12 @@ const App = (() => {
         commitTime(t);
       }
       updateZweitname();
+      updateFolgetag();
     });
     cont.addEventListener('input', (e) => {
       if (e.target.classList.contains('invalid')) e.target.classList.remove('invalid');
       updateZweitname();
+      updateFolgetag();
     });
     const add = $('#diaryAddRow');
     if (add) add.onclick = addDiaryRow;
@@ -2176,8 +2239,11 @@ const App = (() => {
       // neuer Tag angebrochen (Handy über Nacht gesperrt), auf den heutigen Tag umstellen.
       // Nur, wenn das Datum von der App gesetzt war – einen bewusst gewählten Archivtag
       // lässt sie stehen.
+      // Eine bewusst geöffnete Nachtschicht (Vortag) bleibt am Folgetag stehen, bis die
+      // Ansicht neu geöffnet wird – sonst spränge sie beim Entsperren um 08:30 weg.
       if (aktiveView === 'view-bautagebuch' && diaryDatumAutomatisch
-          && diaryDate !== Datum.heute()) {
+          && diaryDate !== Datum.heute()
+          && !(diaryNachtschicht && Datum.plusTage(diaryDate, 1) === Datum.heute())) {
         // Erst den bisherigen Tag sichern (flushDiary arbeitet noch mit dem alten
         // diaryDate), dann umstellen – sonst ginge eine offene Eingabe verloren.
         flushDiary()
@@ -2226,7 +2292,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v83.11'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
+  const APP_VERSION = 'v83.12'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
@@ -2382,6 +2448,8 @@ const App = (() => {
     catalogNames = null;   // Vorlagen-Dropdown für diesen Auftrag neu aufbauen
     diaryDate = null;
     diaryDatumAutomatisch = true;
+    diaryNachtschicht = false;
+    nachtAntwort = null;
     currentNode = null;
     expandedObers.clear();
     expandedUnters.clear();

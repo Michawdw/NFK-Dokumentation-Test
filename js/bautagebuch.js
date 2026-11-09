@@ -74,6 +74,22 @@ const Bautagebuch = (() => {
   };
   const num = (v) => () => (v == null ? null : { inner: `<v>${v}</v>` });
 
+  // Nachtschicht (v83.12): Liegt das Ende vor dem Start, endet die Schicht am Folgetag. Die
+  // Vorlage hat dafür keine Spalte (und darf nicht geändert werden) – das Enddatum wird
+  // deshalb an die Bemerkung ANGEHÄNGT. Der Text des Technikers bleibt vollständig erhalten;
+  // steht schon ein „Ende am …" darin, wird nichts doppelt angehängt. Gespeichert wird der
+  // Zusatz nicht, er entsteht bei jedem Export neu aus den Zeiten (ändert sich die Zeit,
+  // stimmt auch die Bemerkung wieder).
+  function bemerkungMitFolgetag(r, datum) {
+    const bem = String(r.bemerkung || '').trim();
+    const s = timeFraction(r.start), e = timeFraction(r.ende);
+    if (s == null || e == null || e >= s || !datum) return bem;
+    if (/Ende am \d/i.test(bem)) return bem;
+    const [y, m, d] = Datum.plusTage(datum, 1).split('-');
+    const zusatz = `Ende am ${d}.${m}.${y}`;
+    return bem ? bem + ' · ' + zusatz : zusatz;
+  }
+
   // Befüllt die sheet-XML mit den Modelldaten.
   function patchSheet(xml, model, fehlend) {
     // Projektkopf
@@ -92,7 +108,7 @@ const Bautagebuch = (() => {
       xml = setCell(xml, 'I' + row, num(timeFraction(r.start)), fehlend);
       xml = setCell(xml, 'K' + row, num(timeFraction(r.ende)), fehlend);
       xml = setCell(xml, 'M' + row, num(timeFraction(r.pause)), fehlend);
-      xml = setCell(xml, 'O' + row, text(r.bemerkung), fehlend);
+      xml = setCell(xml, 'O' + row, text(bemerkungMitFolgetag(r, model.datum)), fehlend);
     }
 
     // Textblöcke (mehrzeilig; wrapText ist im Zellstil hinterlegt)
@@ -154,5 +170,5 @@ const Bautagebuch = (() => {
     return name;
   }
 
-  return { generateBlob, exportFile, buildName, excelSerial, timeFraction, patchSheet };
+  return { generateBlob, exportFile, buildName, excelSerial, timeFraction, patchSheet, bemerkungMitFolgetag };
 })();

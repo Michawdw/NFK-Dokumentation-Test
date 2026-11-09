@@ -26,5 +26,12 @@ const Datum = (() => {
     return String(iso || heute()).replace(/-/g, '_');
   }
 
-  return { heute, fuerDatei };
+  // 'YYYY-MM-DD' um n Tage verschoben (n darf negativ sein). Rechnet über die lokale Zeit,
+  // damit Monats-/Jahreswechsel und Sommerzeit stimmen (Nachtschicht: Ende am Folgetag).
+  function plusTage(iso, n) {
+    const [y, m, d] = String(iso).split('-').map(Number);
+    return heute(new Date(y, m - 1, d + n));
+  }
+
+  return { heute, fuerDatei, plusTage };
 })();
