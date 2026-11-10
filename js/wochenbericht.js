@@ -1091,17 +1091,29 @@ const Wochenbericht = (() => {
     const o = kwParse(current.kw);
     const mo = montag(o), so = plusTage(mo, 6);
     const von = Datum.heute(mo), bis = Datum.heute(so);
-    const tage = (await DB.listDiary(job.id))
+    const eintraege = (await DB.listDiary(job.id))
       .filter((d) => d.datum >= von && d.datum <= bis && voll(d.taetigkeiten))
-      .sort((x, y) => (x.datum < y.datum ? -1 : 1));
+      .sort((x, y) => (x.datum < y.datum ? -1 : x.datum > y.datum ? 1 : x.einsatz - y.einsatz));
+    // Ab v83.13 kann ein Tag zwei Einsätze haben: unter EINER Tagesüberschrift zusammenfassen,
+    // vor dem 2. Einsatz steht die Zeile „2. Einsatz:".
+    const tage = [];
+    for (const d of eintraege) {
+      const letzter = tage[tage.length - 1];
+      if (letzter && letzter.datum === d.datum) letzter.teile.push(d);
+      else tage.push({ datum: d.datum, teile: [d] });
+    }
     if (!tage.length) { App.toast(`Keine Bautagebuch-Tätigkeiten in ${kwText(current.kw)} gefunden.`); return; }
     // Je Tag: „Mo 12.10.:" als eigene Zeile, darunter die Tätigkeiten mit den Zeilenumbrüchen
     // aus dem Bautagebuch (Leerzeilen darin entfallen), zwischen den Tagen eine Leerzeile.
     // Steht so schon im Textfeld – der Word-Bericht übernimmt es 1:1.
     const text = tage.map((d) => {
       const dt = new Date(d.datum + 'T12:00:00');
-      const zeilen = String(d.taetigkeiten).split(/\r?\n/)
-        .map((z) => z.replace(/\s+/g, ' ').trim()).filter(Boolean);
+      const zeilen = [];
+      for (const teil of d.teile) {
+        if (d.teile.length > 1 && teil.einsatz > 1) zeilen.push(`${teil.einsatz}. Einsatz:`);
+        zeilen.push(...String(teil.taetigkeiten).split(/\r?\n/)
+          .map((z) => z.replace(/\s+/g, ' ').trim()).filter(Boolean));
+      }
       return `${WT[dt.getDay()]} ${kurz(dt)}:\n${zeilen.join('\n')}`;
     }).join('\n\n');
     if (voll(a.text)) {

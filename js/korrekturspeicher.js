@@ -3,10 +3,10 @@
    Diese Datei wird vom AVL-Tool (Reiter „Bautagebuch-Texte“, Button „Merkzettel für die App
    speichern“) erzeugt und von Hand in den Ordner js/ kopiert – nicht von Hand bearbeiten.
    Danach tools/make_deploy.py starten: erhöht die Version, wenn sich der Merkzettel geändert hat.
-   Erzeugt am 06.11.2026 07:20, 44 Einträge.
+   Erzeugt am 09.11.2026 16:01, 50 Einträge.
 */
 var KORREKTURSPEICHER = {
-  "stand": "2026-11-06",
+  "stand": "2026-11-09",
   "taetigkeiten": {
     "ablängen der datenkabel:service kasse,sco kassen 1-6,exit gate, kasse 1-3,reserve kasse,cctv 1+2, aktenraum,kleinverteiler,ap4,headsetkanal, pze,ic1,ic2": "Ablängen der Datenleitungen für Servicekasse, SCO-Kassen 1 bis 6, Exit Gate, Kasse 1 bis 3, Reservekasse, CCTV 1 und 2, Aktenraum, Kleinverteiler (KV), Access Point (AP) 4, Headsetkanal, PZE, I.C. 1 sowie I.C. 2 durchgeführt.",
     "ablängen der transferkabel für und einseitiges auflegen durchgeführt": "Ablängen der Transferkabel für und einseitiges Auflegen durchgeführt.",
@@ -50,11 +50,17 @@ var KORREKTURSPEICHER = {
     "ab mittag konnte ich erst mit serverschränk 1 beginnen da die steigetrasse erst vorhanden war": "Ab Mittag konnten die Arbeiten an den Netzwerkschränken (NWS) begonnen werden, da die Steigetrasse erst ab diesem Zeitpunkt vorhanden war.",
     "durch den aktuellen baufortschritt, immer noch fehlende endausbauten der kabelwege sind beschleunigungsmaßnahmen notwendig": "Aufgrund des aktuellen Baufortschritts sowie der weiterhin fehlenden Endausbauten der Kabelwege sind Beschleunigungsmaßnahmen erforderlich.",
     "erschwerten kabelzug an den kassen da trassen zu na unter den holzbindern sitzt i": "Erschwerter Kabelzug im Kassenbereich, da die Trassen zu nah unter den Holzbinder montiert waren.",
-    "erschwertes arbeiten aufgrund von fehlenden licht in den serverräumen. avl 1 techniler 4 stunden": "Erschwertes Arbeiten aufgrund fehlender Beleuchtung in den Serverräumen.\nAVL: 1 Techniker, 4 Stunden."
+    "erschwertes ablängen der datenkabel da keine geeignete strecke vorhanden ist wo uns keiner über die kabel fährt, deswegen wurde nachtschicht beantragt. siehe baubehinderungsanzeige": "Erschwertes Ablängen der Datenleitungen, da keine geeignete Strecke vorhanden war, auf der die Datenleitungen ausgelegt werden konnten, ohne dass diese überfahren wurden. Aus diesem Grund wurde Nachtschicht beantragt. Die Gründe sind der Baubehinderungsanzeige zu entnehmen.",
+    "erschwertes arbeiten aufgrund von fehlenden licht in den serverräumen. avl 1 techniler 4 stunden": "Erschwertes Arbeiten aufgrund fehlender Beleuchtung in den Serverräumen.\nAVL: 1 Techniker, 4 Stunden.",
+    "für die laufende woche werden wir daher ausfallzeiten für drei techniker mit jeweils 40 arbeitsstunden ( insgesamt 120h) als mehraufwendungen geltend machen": "Für die laufende Woche entstehen Ausfallzeiten von drei Technikern.\nAVL: 3 Techniker, jeweils 40 Stunden."
   },
   "vorkommnisse": {
+    "außenantennen wäre eh nicht möglich gewesen kein durchbruch nach außen und der serverraum liegt inne in der filiale bis zur außenwand ca 15 bis 20m kabelweg montiert": "Die Montage der Außenantennen konnte nicht durchgeführt werden, da kein Wanddurchbruch nach außen vorhanden war. Der Serverraum befand sich im Inneren der Filiale und bis zur Außenwand waren bereits Kabelwege mit einer Länge von ca. 15 bis 20 m montiert.",
     "das kwlan konnte noch nicht inbetriebnahme genommen werden da der support laut eigener aussage auch noch keine ahnung von der neuen frederix hat": "Das KWLAN konnte noch nicht in Betrieb genommen werden, da der Support nach eigener Aussage noch keine Kenntnisse zur neuen Frederix hatte.",
     "es fehlt ein ap sowie min. 2 kaltgerätekabel und die tastatur und maus für das lili": "Es fehlten ein Access Point (AP), mindestens zwei Kaltgerätekabel sowie die Tastatur und die Maus für das LILI.",
-    "klärung elektriker wegen pze und headsetkanal und xweb": "Organisatorische Abstimmung mit dem Elektriker bezüglich PZE, Headsetkanal sowie XWEB durchgeführt."
+    "es wurden kabellängen von 95m gemessen (an flexpos weiter gemeldet)": "Es wurden Kabellängen von 95 m gemessen und an FlexPos weitergemeldet.",
+    "hebebühnen können nicht rausgefahren werden da der eingangsbereich noch nicht fertig ist": "Die Hebebühnen konnten nicht aus der Filiale gefahren werden, da der Eingangsbereich noch nicht fertiggestellt war.",
+    "klärung elektriker wegen pze und headsetkanal und xweb": "Organisatorische Abstimmung mit dem Elektriker bezüglich PZE, Headsetkanal sowie XWEB durchgeführt.",
+    "weiterhin kein strom in der filiale": "Weiterhin kein Strom in der Filiale."
   }
 };

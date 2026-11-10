@@ -1621,6 +1621,10 @@ const App = (() => {
   // Archiv oder im Datumsfeld einen anderen Tag, steht es auf false – dann darf ihm die
   // App den Tag nicht unter den Händen wegschieben (siehe Mitternachtswechsel unten).
   let diaryDatumAutomatisch = true;
+  // Einsatz des Tages (1|2, ab v83.13): Ein Team unterbricht die Arbeit und kommt abends
+  // wieder – dafür gibt es ein zweites, getrenntes Bautagebuch für denselben Tag
+  // (Excel-Dateiname „_Einsatz2", erste Tätigkeitszeile „2. Einsatz am …", siehe bautagebuch.js).
+  let diaryEinsatz = 1;
 
   // Beim Öffnen der Ansicht immer auf den heutigen Tag stellen.
   // Bis v39 stand hier das Auftragsdatum (`h.datum`), also der Tag, an dem der Auftrag
@@ -1631,6 +1635,7 @@ const App = (() => {
     diaryDate = Datum.heute();
     diaryDatumAutomatisch = true;
     diaryNachtschicht = false;
+    diaryEinsatz = 1;
   }
 
   // ---- Nachtschicht (v83.12) ----
@@ -1642,7 +1647,7 @@ const App = (() => {
   // die App aber den neuen Tag – der Eintrag landete unter dem falschen Datum.
   const NACHT_BIS_STUNDE = 8;   // bis 08:00 gilt ein Öffnen als „nach der Nachtschicht"
   let diaryNachtschicht = false; // true: Vortag wurde als Nachtschicht geöffnet
-  let nachtAntwort = null;       // { tag, datum }: Antwort auf die Frage, gilt für diesen Tag
+  let nachtAntwort = null;       // { tag, datum, einsatz }: Antwort auf die Frage, gilt für diesen Tag
 
   const endetAmFolgetag = (r) => !!(r.start && r.ende && r.ende < r.start);
   // Vor Mitternacht begonnen und noch offen (oder schon mit Ende nach Mitternacht).
@@ -1650,17 +1655,25 @@ const App = (() => {
   const offeneNachtschicht = (tag) => ((tag && tag.rows) || [])
     .some((r) => r.start && r.start >= '12:00' && (!r.ende || r.ende < r.start));
 
-  // Welcher Tag soll beim Öffnen gelten? Liefert das Datum (heute oder gestern).
+  // Welcher Tag (und Einsatz) soll beim Öffnen gelten? Liefert { datum, einsatz }.
   async function diaryStarttag() {
     const jetzt = new Date();
     const heute = Datum.heute(jetzt);
-    if (!currentJob || jetzt.getHours() >= NACHT_BIS_STUNDE) return heute;
-    if (await DB.getDiary(currentJob.id, heute)) return heute;   // heute schon begonnen
+    const nurHeute = { datum: heute, einsatz: 1 };
+    if (!currentJob || jetzt.getHours() >= NACHT_BIS_STUNDE) return nurHeute;
+    if (await DB.getDiary(currentJob.id, heute, 1) || await DB.getDiary(currentJob.id, heute, 2)) {
+      return nurHeute;                                              // heute schon begonnen
+    }
     const gestern = Datum.plusTage(heute, -1);
-    if (nachtAntwort && nachtAntwort.tag === heute) return nachtAntwort.datum;
-    if (offeneNachtschicht(await DB.getDiary(currentJob.id, gestern))) {
-      toast('Nachtschicht: Bautagebuch vom ' + fmtDate(gestern) + ' geöffnet', 3500);
-      return gestern;
+    if (nachtAntwort && nachtAntwort.tag === heute) return nachtAntwort;
+    // Offene Nachtschicht von gestern – zuerst im Abendeinsatz (2) suchen.
+    const g2 = await DB.getDiary(currentJob.id, gestern, 2);
+    const g1 = await DB.getDiary(currentJob.id, gestern, 1);
+    const offen = offeneNachtschicht(g2) ? 2 : offeneNachtschicht(g1) ? 1 : 0;
+    if (offen) {
+      toast('Nachtschicht: Bautagebuch vom ' + fmtDate(gestern)
+        + (g2 ? ` (${offen}. Einsatz)` : '') + ' geöffnet', 3500);
+      return { datum: gestern, einsatz: offen };
     }
     const ja = await openConfirm('Nachtschicht?',
       `<p>Es ist nach Mitternacht. Gehört dein Eintrag zur Schicht von gestern
@@ -1669,8 +1682,11 @@ const App = (() => {
        Liegt das Ende nach Mitternacht, vermerkt die App das Enddatum in der Bemerkung.</p>`,
       'Ja, Schicht vom ' + fmtDate(gestern).slice(0, 6), false,
       'Nein, heute (' + fmtDate(heute).slice(0, 6) + ')');
-    nachtAntwort = { tag: heute, datum: ja ? gestern : heute };
-    return nachtAntwort.datum;
+    // Ja: den letzten vorhandenen Einsatz von gestern öffnen. War gestern tagsüber schon ein
+    // Einsatz, kann der Techniker oben „+ 2. Einsatz an diesem Tag" wählen.
+    nachtAntwort = ja ? { tag: heute, datum: gestern, einsatz: g2 ? 2 : 1 }
+      : { tag: heute, datum: heute, einsatz: 1 };
+    return nachtAntwort;
   }
 
   // Hinweis unter den Zeiten: „Ende am Folgetag (12.11.2026) – Arbeitszeit 7:30 h".
@@ -1693,15 +1709,17 @@ const App = (() => {
     const f = $('#diaryForm');
     diaryAufHeute();
     const start = await diaryStarttag();
-    if (start !== diaryDate) { diaryDate = start; diaryNachtschicht = true; }
+    if (start.datum !== diaryDate) { diaryDate = start.datum; diaryNachtschicht = true; }
+    diaryEinsatz = start.einsatz;
     f.datum.value = diaryDate;
-    await loadDiaryForDate(diaryDate);
+    await loadDiaryForDate(diaryDate, diaryEinsatz);
     await renderDiaryArchive();
     f.datum.onchange = async () => {
       await flushDiary();                 // alten Tag sichern, bevor das Formular umschaltet
       diaryDate = f.datum.value;
+      diaryEinsatz = 1;
       diaryDatumAutomatisch = (diaryDate === Datum.heute());
-      await loadDiaryForDate(diaryDate);
+      await loadDiaryForDate(diaryDate, 1);
       await renderDiaryArchive();
     };
     if (!diaryAutoSaveAktiv) {            // Listener nur einmal registrieren
@@ -1717,7 +1735,8 @@ const App = (() => {
     return `${d}.${m}.${y}`;
   }
 
-  // Liste der gespeicherten Bautagebuch-Tage des aktuellen Auftrags (neueste zuerst).
+  // Liste der gespeicherten Bautagebücher des aktuellen Auftrags (neueste zuerst). Hat ein
+  // Tag zwei Einsätze, steht jeder als eigene Zeile da („11.11.2026 · 2. Einsatz").
   async function renderDiaryArchive() {
     const cont = $('#diaryArchive');
     if (!cont || !currentJob) return;
@@ -1726,51 +1745,103 @@ const App = (() => {
       cont.innerHTML = '<p class="hint">Noch keine Bautagebücher gespeichert. Trage unten einen Tag ein und tippe „Tag speichern".</p>';
       return;
     }
+    const mitZwei = new Set(days.filter((d) => d.einsatz > 1).map((d) => d.datum));
     cont.innerHTML = '';
     for (const day of days) {
-      const active = day.datum === diaryDate;
+      const active = day.datum === diaryDate && day.einsatz === diaryEinsatz;
+      const titel = fmtDate(day.datum) + (mitZwei.has(day.datum) ? ` · ${day.einsatz}. Einsatz` : '');
       const snippet = (day.taetigkeiten || '').replace(/\s+/g, ' ').trim().slice(0, 60);
       const div = document.createElement('div');
       div.className = 'diary-arch-item' + (active ? ' active' : '');
       div.innerHTML = `<div class="da-main">
-          <div class="da-date">${fmtDate(day.datum)}</div>
+          <div class="da-date">${titel}</div>
           <div class="da-snip">${escHtml(snippet || '—')}</div>
         </div>
         <span class="da-go">öffnen ›</span>
-        <button class="da-del" title="Tag löschen">🗑</button>`;
+        <button class="da-del" title="Löschen">🗑</button>`;
       div.querySelector('.da-main').onclick = async () => {
         await flushDiary();            // aktuellen Tag sichern, bevor ein anderer geladen wird
         diaryDate = day.datum;
+        diaryEinsatz = day.einsatz;
         diaryDatumAutomatisch = (diaryDate === Datum.heute());
         $('#diaryForm').datum.value = day.datum;
-        await loadDiaryForDate(day.datum);
+        await loadDiaryForDate(day.datum, day.einsatz);
         await renderDiaryArchive();
         window.scrollTo(0, 0);
-        toast('Tag ' + fmtDate(day.datum) + ' geladen – bearbeitbar');
+        toast(titel + ' geladen – bearbeitbar');
       };
       div.querySelector('.da-go').onclick = div.querySelector('.da-main').onclick;
-      div.querySelector('.da-del').onclick = (e) => { e.stopPropagation(); deleteDiaryFlow(day); };
+      div.querySelector('.da-del').onclick = (e) => { e.stopPropagation(); deleteDiaryFlow(day, mitZwei.has(day.datum)); };
       cont.appendChild(div);
     }
   }
 
-  async function deleteDiaryFlow(day) {
+  // Löschen eines Einsatzes. Wird der 1. gelöscht, während ein 2. existiert, rückt der 2.
+  // nach (wird zum 1.) – sonst stünde ein „2. Einsatz" ohne ersten da.
+  async function deleteDiaryFlow(day, zweiEinsaetze) {
+    const titel = fmtDate(day.datum) + (zweiEinsaetze ? ` (${day.einsatz}. Einsatz)` : '');
+    const nachruecken = zweiEinsaetze && day.einsatz === 1;
     const ok = await openConfirm(
-      'Bautagebuch-Tag löschen?',
-      `<p>Den Tag <b>${fmtDate(day.datum)}</b> wirklich löschen?</p>
-       <p class="hint">Die Eingaben dieses Tages werden entfernt. Das kann nicht rückgängig
-       gemacht werden.</p>`,
+      zweiEinsaetze ? 'Einsatz löschen?' : 'Bautagebuch-Tag löschen?',
+      `<p><b>${titel}</b> wirklich löschen?</p>
+       ${nachruecken ? '<p>Der 2. Einsatz dieses Tages wird danach zum 1. Einsatz.</p>' : ''}
+       <p class="hint">Die Eingaben werden entfernt. Das kann nicht rückgängig gemacht werden.</p>`,
       'Löschen', true);
     if (!ok) return;
-    await DB.deleteDiary(currentJob.id, day.datum);
-    if (day.datum === diaryDate) await loadDiaryForDate(diaryDate); // Formular leeren/auffrischen
+    clearTimeout(diarySaveTimer);      // kein verspätetes Auto-Speichern des gelöschten Einsatzes
+    await DB.deleteDiary(currentJob.id, day.datum, day.einsatz);
+    if (nachruecken) {
+      const zwei = await DB.getDiary(currentJob.id, day.datum, 2);
+      if (zwei) {
+        await DB.saveDiary(currentJob.id, Object.assign({}, zwei, { einsatz: 1 }));
+        await DB.deleteDiary(currentJob.id, day.datum, 2);
+      }
+    }
+    if (day.datum === diaryDate) {
+      if (diaryEinsatz === 2 && (nachruecken || day.einsatz === 2)) diaryEinsatz = 1;
+      await loadDiaryForDate(diaryDate, diaryEinsatz); // Formular leeren/auffrischen
+    }
     await renderDiaryArchive();
-    toast('Tag ' + fmtDate(day.datum) + ' gelöscht');
+    toast(titel + ' gelöscht');
   }
 
-  async function loadDiaryForDate(datum) {
+  // Umschalter unter dem Datum: „+ 2. Einsatz an diesem Tag" (sobald der 1. gespeichert ist)
+  // bzw. „1. Einsatz | 2. Einsatz", wenn es einen zweiten gibt oder er gerade offen ist.
+  async function renderEinsatzLeiste() {
+    const box = $('#diaryEinsatz');
+    if (!box || !currentJob || !diaryDate) return;
+    const e1 = await DB.getDiary(currentJob.id, diaryDate, 1);
+    const e2 = await DB.getDiary(currentJob.id, diaryDate, 2);
+    if (e2 || diaryEinsatz === 2) {
+      box.innerHTML = [1, 2].map((n) => `<button type="button" class="de-tab${n === diaryEinsatz ? ' active' : ''}"
+        data-einsatz="${n}" aria-pressed="${n === diaryEinsatz}">${n}. Einsatz</button>`).join('');
+      box.hidden = false;
+    } else if (e1) {
+      box.innerHTML = '<button type="button" class="btn ghost wide de-neu" data-einsatz="2">+ 2. Einsatz an diesem Tag</button>';
+      box.hidden = false;
+    } else {
+      box.innerHTML = '';
+      box.hidden = true;
+    }
+    box.onclick = (e) => {
+      const b = e.target.closest('[data-einsatz]');
+      if (b) wechsleEinsatz(+b.dataset.einsatz);
+    };
+  }
+
+  async function wechsleEinsatz(n) {
+    if (n === diaryEinsatz) return;
+    await flushDiary();                 // offenen Einsatz sichern, bevor umgeschaltet wird
+    diaryEinsatz = n;
+    await loadDiaryForDate(diaryDate, n);
+    await renderDiaryArchive();
+    if (n === 2) toast('2. Einsatz: eigenes Bautagebuch für denselben Tag');
+  }
+
+  async function loadDiaryForDate(datum, einsatz) {
     const f = $('#diaryForm');
-    const saved = await DB.getDiary(currentJob.id, datum);
+    const nr = einsatz || 1;
+    const saved = await DB.getDiary(currentJob.id, datum, nr);
     const techs = (currentJob && currentJob.header && currentJob.header.techniker) || [];
 
     if (saved) {
@@ -1781,15 +1852,21 @@ const App = (() => {
       f.ortDatum.value = saved.ortDatum || defaultOrtDatum(datum);
       renderDiaryRows(saved.rows || techs.map((t) => ({ name: t })));
     } else {
-      f.anzTechniker.value = techs.length || '';
+      // Neuer 2. Einsatz: meist dasselbe Team – Namen (und Anzahl) aus dem 1. Einsatz
+      // vorbelegen, Zeiten und Texte bleiben leer.
+      const e1 = nr > 1 ? await DB.getDiary(currentJob.id, datum, 1) : null;
+      const namen = e1 && (e1.rows || []).filter((r) => r.name || r.name2)
+        .map((r) => ({ name: r.name || '', name2: r.name2 || '' }));
+      f.anzTechniker.value = e1 && e1.anzTechniker != null ? e1.anzTechniker : (techs.length || '');
       f.taetigkeiten.value = '';
       f.behinderungen.value = '';
       f.vorkommnisse.value = '';
       f.ortDatum.value = defaultOrtDatum(datum);
-      renderDiaryRows(techs.map((t) => ({ name: t })));
+      renderDiaryRows(namen && namen.length ? namen : techs.map((t) => ({ name: t })));
     }
     korrekturVorher = null;
     $('#diaryKorrUndo').hidden = true;
+    await renderEinsatzLeiste();
   }
 
   // ---- Texte korrigieren (regelbasiert, js/textkorrektur.js) ----
@@ -2115,6 +2192,7 @@ const App = (() => {
 
     return {
       datum: f.datum.value,
+      einsatz: diaryEinsatz,
       anzTechniker: f.anzTechniker.value,
       rows,
       taetigkeiten: f.taetigkeiten.value,
@@ -2129,12 +2207,13 @@ const App = (() => {
   // das Datum gewechselt wurde – das Formular wurde dabei kommentarlos überschrieben.
   // datumFuer: unter welchem Tag gespeichert wird. Beim Datumswechsel steht im Feld bereits
   // das NEUE Datum, gespeichert werden muss aber der alte Tag.
-  async function autoSaveDiary(datumFuer) {
+  async function autoSaveDiary(datumFuer, einsatzFuer) {
     if (!currentJob) return false;
     const f = $('#diaryForm');
     if (!f || !f.datum) return false;
     const model = gatherDiary();
     if (datumFuer) model.datum = datumFuer;
+    if (einsatzFuer) model.einsatz = einsatzFuer;
     if (!model.datum) return false;
     // Ein unberührtes Formular soll keinen leeren Archiv-Eintrag anlegen. „ortDatum" und
     // „anzTechniker" zählen nicht als Inhalt – beide sind vorbelegt.
@@ -2149,14 +2228,17 @@ const App = (() => {
   function scheduleDiarySave() {
     clearTimeout(diarySaveTimer);
     diarySaveTimer = setTimeout(() => {
-      autoSaveDiary(diaryDate).catch((e) => console.warn('Auto-Speichern fehlgeschlagen', e));
+      autoSaveDiary(diaryDate, diaryEinsatz)
+        // Nach dem ersten Speichern des 1. Einsatzes erscheint „+ 2. Einsatz an diesem Tag".
+        .then((ok) => { if (ok && $('#diaryEinsatz').hidden) renderEinsatzLeiste(); })
+        .catch((e) => console.warn('Auto-Speichern fehlgeschlagen', e));
     }, 800);
   }
 
   // Sofort sichern (Ansicht wird verlassen, App geht in den Hintergrund).
   async function flushDiary() {
     clearTimeout(diarySaveTimer);
-    try { await autoSaveDiary(diaryDate); } catch (e) { console.warn('Auto-Speichern fehlgeschlagen', e); }
+    try { await autoSaveDiary(diaryDate, diaryEinsatz); } catch (e) { console.warn('Auto-Speichern fehlgeschlagen', e); }
   }
 
   // Zahl der eingetragenen Personen: Name und 2. Name zählen je für sich; „A + B" in einem
@@ -2192,6 +2274,7 @@ const App = (() => {
     if (!(await pruefeAnzahlTechniker(model, 'speichern'))) return;
     await DB.saveDiary(currentJob.id, model);
     await renderDiaryArchive();
+    await renderEinsatzLeiste();
     const s = $('#diarySaved');
     s.hidden = false; setTimeout(() => { s.hidden = true; }, 2000);
     toast('Tag gespeichert');
@@ -2203,6 +2286,7 @@ const App = (() => {
     if (!(await pruefeAnzahlTechniker(model, 'exportieren'))) return;
     await DB.saveDiary(currentJob.id, model); // immer mitspeichern
     await renderDiaryArchive();
+    await renderEinsatzLeiste();
     const h = (currentJob && currentJob.header) || {};
     const full = Object.assign({}, model, {
       filiale: h.filiale || '',
@@ -2292,7 +2376,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v83.12'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
+  const APP_VERSION = 'v83.14'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
@@ -2450,6 +2534,7 @@ const App = (() => {
     diaryDatumAutomatisch = true;
     diaryNachtschicht = false;
     nachtAntwort = null;
+    diaryEinsatz = 1;
     currentNode = null;
     expandedObers.clear();
     expandedUnters.clear();

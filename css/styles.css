@@ -380,6 +380,13 @@ fieldset.techs legend { font-weight: 700; padding: 0 6px; }
 .diary-row .dr-folgetag { margin: 6px 0 0; padding: 6px 8px; font-size: 12.5px; line-height: 1.35;
   background: #fff6db; border-left: 3px solid #e0a100; border-radius: 4px; color: #5a4500; }
 .diary-row .dr-folgetag[hidden] { display: none; }
+/* 2. Einsatz am selben Tag (v83.13) */
+.diary-einsatz { display: flex; gap: 6px; margin: 4px 0 10px; }
+.diary-einsatz[hidden] { display: none; }
+.diary-einsatz .de-neu { margin: 0; }
+.diary-einsatz .de-tab { flex: 1; padding: 9px 6px; font: inherit; font-weight: 600; font-size: 14px;
+  border: 1.5px solid var(--brand); border-radius: 8px; background: #fff; color: var(--brand); }
+.diary-einsatz .de-tab.active { background: var(--brand); color: #fff; }
 /* Textfeld (Zahlen-Tastatur) + Uhr-Knopf rechts im Feld. Das echte Zeitfeld liegt
    unsichtbar darunter und liefert nur die Zeitauswahl (showPicker). */
 .dr-time-box { position: relative; display: block; margin-top: 6px; }

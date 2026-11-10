@@ -308,22 +308,35 @@ const DB = (() => {
   }
 
   // ---- Bautagebuch-Tage (pro Auftrag) ----
-  async function getDiary(jobId, datum) {
-    return reqP((await store('diary2', 'readonly')).get([jobId, datum]));
+  // Ab v83.13 gibt es bis zu 2 Einsätze je Tag (Team unterbricht und arbeitet abends weiter).
+  // Der Speicher behält seinen Schlüssel [jobId, datum] – ein Umbau hätte eine Migration auf
+  // jedem Handy gebraucht. Einsatz 1 liegt wie bisher unter dem echten Datum (Altbestand
+  // bleibt gültig), Einsatz 2 unter dem Schlüsselwert '2026-11-11_2' mit `tag` = echtes Datum.
+  // Nach außen sehen alle Aufrufer nur das echte Datum plus `einsatz` (1|2).
+  const diaryKey = (datum, einsatz) => ((einsatz || 1) > 1 ? `${datum}_${einsatz}` : datum);
+  function diaryNormal(obj) {
+    if (!obj) return obj;
+    const einsatz = obj.einsatz || 1;
+    return Object.assign({}, obj, { datum: obj.tag || String(obj.datum).replace(/_\d+$/, ''), einsatz });
+  }
+  async function getDiary(jobId, datum, einsatz) {
+    return diaryNormal(await reqP((await store('diary2', 'readonly')).get([jobId, diaryKey(datum, einsatz)])));
   }
   async function saveDiary(jobId, obj) {
-    obj.jobId = jobId;
-    return reqP((await store('diary2', 'readwrite')).put(obj));
+    const einsatz = obj.einsatz || 1;
+    const satz = Object.assign({}, obj, { jobId, einsatz });
+    if (einsatz > 1) { satz.tag = obj.datum; satz.datum = diaryKey(obj.datum, einsatz); } else delete satz.tag;
+    return reqP((await store('diary2', 'readwrite')).put(satz));
   }
-  async function deleteDiary(jobId, datum) {
-    return reqP((await store('diary2', 'readwrite')).delete([jobId, datum]));
+  async function deleteDiary(jobId, datum, einsatz) {
+    return reqP((await store('diary2', 'readwrite')).delete([jobId, diaryKey(datum, einsatz)]));
   }
-  // Alle gespeicherten Bautagebuch-Tage eines Auftrags, neueste zuerst.
+  // Alle gespeicherten Bautagebücher eines Auftrags: neueste Tage zuerst, je Tag Einsatz 1 vor 2.
   async function listDiary(jobId) {
     const s = await store('diary2', 'readonly');
     const range = IDBKeyRange.bound([jobId, ''], [jobId, '￿']);
-    const all = await reqP(s.getAll(range));
-    return all.sort((a, b) => (a.datum < b.datum ? 1 : a.datum > b.datum ? -1 : 0));
+    const all = (await reqP(s.getAll(range))).map(diaryNormal);
+    return all.sort((a, b) => (a.datum < b.datum ? 1 : a.datum > b.datum ? -1 : a.einsatz - b.einsatz));
   }
 
   return {

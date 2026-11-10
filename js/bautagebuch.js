@@ -90,6 +90,18 @@ const Bautagebuch = (() => {
     return bem ? bem + ' · ' + zusatz : zusatz;
   }
 
+  // 2. Einsatz am selben Tag (v83.13): Die Vorlage kennt keinen Einsatz – damit es auch auf
+  // dem Ausdruck steht, beginnt „Beschreibung der Tätigkeiten" mit „2. Einsatz am TT.MM.JJJJ".
+  // Nur im Export (nicht gespeichert); steht die Zeile schon da, wird sie nicht doppelt gesetzt.
+  function taetigkeitenMitEinsatz(model) {
+    const t = String(model.taetigkeiten || '');
+    if ((model.einsatz || 1) < 2 || !model.datum) return t;
+    const [y, m, d] = model.datum.split('-');
+    const kopf = `${model.einsatz}. Einsatz am ${d}.${m}.${y}`;
+    if (t.trimStart().startsWith(kopf)) return t;
+    return t.trim() ? kopf + '\n' + t : kopf;
+  }
+
   // Befüllt die sheet-XML mit den Modelldaten.
   function patchSheet(xml, model, fehlend) {
     // Projektkopf
@@ -112,7 +124,7 @@ const Bautagebuch = (() => {
     }
 
     // Textblöcke (mehrzeilig; wrapText ist im Zellstil hinterlegt)
-    xml = setCell(xml, 'E14', text(model.taetigkeiten), fehlend);
+    xml = setCell(xml, 'E14', text(taetigkeitenMitEinsatz(model)), fehlend);
     xml = setCell(xml, 'E16', text(model.behinderungen), fehlend);
     xml = setCell(xml, 'E19', text(model.vorkommnisse), fehlend);
 
@@ -160,6 +172,7 @@ const Bautagebuch = (() => {
     const parts = ['Bautagebuch', 'LI' + fil];
     if (ort) parts.push(ort);
     parts.push(d);
+    if ((model.einsatz || 1) > 1) parts.push('Einsatz' + model.einsatz); // 2. Einsatz am selben Tag
     return parts.join('_').replace(/_+/g, '_') + '.xlsx';
   }
 
@@ -170,5 +183,5 @@ const Bautagebuch = (() => {
     return name;
   }
 
-  return { generateBlob, exportFile, buildName, excelSerial, timeFraction, patchSheet, bemerkungMitFolgetag };
+  return { generateBlob, exportFile, buildName, excelSerial, timeFraction, patchSheet, bemerkungMitFolgetag, taetigkeitenMitEinsatz };
 })();
