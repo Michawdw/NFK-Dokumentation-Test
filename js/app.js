@@ -2116,6 +2116,9 @@ const App = (() => {
     });
     scheduleDiarySave();
     updateZweitname();
+    // Ohne diesen Aufruf blieb ein „Ende am Folgetag"-Hinweis aus einer vorherigen Eingabe
+    // stehen, obwohl die übernommenen Zeiten am selben Tag enden (v83.15, Fund von Michael).
+    updateFolgetag();
     toast('Zeiten von Techniker 1 übernommen');
   }
 
@@ -2376,7 +2379,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v83.14'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
+  const APP_VERSION = 'v83.15'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
