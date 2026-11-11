@@ -101,7 +101,7 @@ const Namen = (() => {
     pfeil.className = 'namen-pfeil';
     pfeil.tabIndex = -1;
     pfeil.setAttribute('aria-label', 'Namensliste öffnen');
-    pfeil.textContent = '▾';
+    pfeil.innerHTML = Icon('chevron-down');
     zeile.appendChild(pfeil);
     const liste = document.createElement('div');
     liste.className = 'namen-liste';
@@ -128,8 +128,8 @@ const Namen = (() => {
       const exakt = (await alle()).some((x) => key(x.name) === text);
       if (mein !== lauf) return;
       let html = treffer.map((x) => `<div class="namen-eintrag${x.eigen ? ' eigen' : ''}" data-name="${esc(x.name)}">
-          <span class="namen-text">${x.eigen ? '✎ ' : ''}${esc(x.name)}</span>
-          ${x.eigen ? '<button type="button" class="namen-del" tabindex="-1" aria-label="Namen aus der Liste entfernen">✕</button>' : ''}
+          <span class="namen-text">${x.eigen ? Icon('pencil', 'i-sm') + ' ' : ''}${esc(x.name)}</span>
+          ${x.eigen ? '<button type="button" class="namen-del" tabindex="-1" aria-label="Namen aus der Liste entfernen">' + Icon('x') + '</button>' : ''}
         </div>`).join('');
       if (text && !exakt) {
         html += `<div class="namen-eintrag namen-neu" data-neu="${esc(norm(input.value))}">+ „${esc(norm(input.value))}“ als neuen Namen</div>`;

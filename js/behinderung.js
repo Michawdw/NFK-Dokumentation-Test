@@ -318,8 +318,8 @@ const Behinderung = (() => {
           <div class="da-date">${escHtml(Docx.fmtDate(entry.datum))}</div>
           <div class="da-snip">${escHtml(snippet || '—')}</div>
         </div>
-        <span class="da-go">öffnen ›</span>
-        <button class="da-del" title="Anzeige löschen">🗑</button>`;
+        <span class="da-go">öffnen ${Icon('chevron-right', 'i-sm')}</span>
+        <button class="da-del" title="Anzeige löschen" aria-label="Anzeige löschen">${Icon('trash-2')}</button>`;
       const open = async () => {
         current = entry;
         await fillForm(entry);
@@ -390,7 +390,7 @@ const Behinderung = (() => {
         <img src="${url}" alt="" loading="lazy" />
         <input class="vp-cap" type="text" placeholder="Bildunterschrift"
           value="${escAttr(ph.caption || '')}" autocomplete="off" />
-        <button type="button" class="vp-del" title="Foto entfernen">✕</button>`;
+        <button type="button" class="vp-del" title="Foto entfernen" aria-label="Foto entfernen">${Icon('x')}</button>`;
       w.querySelector('.vp-cap').onchange = async (ev) => {
         ph.caption = ev.target.value;
         await DB.updatePhoto(ph);
@@ -549,7 +549,7 @@ const Behinderung = (() => {
     const exportModel = await buildExportModel();
     if (!exportModel) return;
     if (!absenderComplete(exportModel.absender)) {
-      App.toast('Bitte zuerst die Absenderdaten hinterlegen (🏢).');
+      App.toast('Bitte zuerst die Absenderdaten hinterlegen (Knopf „Absenderdaten“).');
       await renderSenderBanner();
       return;
     }

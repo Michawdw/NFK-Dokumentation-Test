@@ -1,11 +1,12 @@
 /* Service Worker – Precache der App-Shell für vollständigen Offline-Betrieb.
    Cache-Version bei jeder Änderung der Asset-Liste erhöhen. */
-const CACHE = 'nfk-doku-v83.15';
+const CACHE = 'nfk-doku-v84.1';
 
 const ASSETS = [
   './',
   './index.html',
   './css/styles.css',
+  './js/icons.js',
   './js/datum.js',
   './js/db.js',
   './js/app.js',
@@ -35,7 +36,8 @@ const ASSETS = [
   './assets/icon-512.png',
   './assets/icon-maskable-512.png',
   './assets/apple-touch-icon.png',
-  './assets/logo.png'
+  './assets/logo.png',
+  './assets/fonts/inter-latin-wght-normal.woff2'
 ];
 
 self.addEventListener('install', (event) => {

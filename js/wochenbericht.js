@@ -538,8 +538,8 @@ const Wochenbericht = (() => {
     box.innerHTML = `<div class="wb-fotolabel${fehlt ? ' fehlt' : ''}">${escHtml(label)}</div>
       <div class="vp-photos"></div>
       <div class="toolrow vp-photobtns">
-        <button type="button" class="btn ghost wb-cam">📷 Foto</button>
-        <button type="button" class="btn ghost wb-gal">🖼 Galerie</button>
+        <button type="button" class="btn ghost wb-cam">${Icon('camera')} Foto</button>
+        <button type="button" class="btn ghost wb-gal">${Icon('image')} Galerie</button>
       </div>`;
     box.querySelector('.wb-cam').onclick = () => { fotoZiel = pid; cameraInput.click(); };
     box.querySelector('.wb-gal').onclick = () => { fotoZiel = pid; galleryInput.click(); };
@@ -552,7 +552,7 @@ const Wochenbericht = (() => {
       w.className = 'vp-thumb';
       w.innerHTML = `<img src="${url}" alt="" loading="lazy" />
         <input class="vp-cap" type="text" placeholder="Bildunterschrift" value="${escAttr(ph.caption || '')}" autocomplete="off" />
-        <button type="button" class="vp-del" title="Foto entfernen">✕</button>`;
+        <button type="button" class="vp-del" title="Foto entfernen" aria-label="Foto entfernen">${Icon('x')}</button>`;
       w.querySelector('.vp-cap').onchange = async (ev) => { ph.caption = ev.target.value; await DB.updatePhoto(ph); };
       w.querySelector('.vp-del').onclick = async () => {
         const ok = await App.openConfirm('Foto entfernen?', '<p>Dieses Foto wirklich aus dem Wochenbericht entfernen?</p>', 'Entfernen', true);
@@ -628,7 +628,7 @@ const Wochenbericht = (() => {
           row.insertAdjacentHTML('beforeend', `<label class="vp-textlabel wb-detail">Was ist offen, und warum nicht fertig? (Pflichtfeld)
             <textarea class="vp-text wb-auto wb-btext" rows="2">${escHtml(x.text || '')}</textarea></label>`
             + (pruefen ? `<div class="wb-pruefen"><span>aus der Vorwoche übernommen – bitte prüfen</span>
-                <button type="button" class="btn ghost wb-unveraendert">✓ unverändert</button></div>` : ''));
+                <button type="button" class="btn ghost wb-unveraendert">${Icon('check')} unverändert</button></div>` : ''));
           const ta = row.querySelector('.wb-btext');
           ta.oninput = () => {
             x.text = ta.value; x.bestaetigt = true;
@@ -688,7 +688,7 @@ const Wochenbericht = (() => {
     const card = document.createElement('div');
     card.className = 'wb-item' + (istPflicht(p) ? '' : ' neutral');
     card.dataset.pid = p.id;
-    card.innerHTML = `<div class="wb-q"><span class="wb-check">✓</span>${escHtml(p.titel)}</div>`;
+    card.innerHTML = `<div class="wb-q"><span class="wb-check">${Icon('circle-check')}</span>${escHtml(p.titel)}</div>`;
 
     if (p.typ === 'wahl') {
       const opt = p.optionen.find((o) => o.v === a.status);
@@ -734,7 +734,7 @@ const Wochenbericht = (() => {
       card.insertAdjacentHTML('beforeend', `<textarea class="vp-text wb-auto wb-frei" rows="3" placeholder="Eintragen …">${escHtml(a.text || '')}</textarea>
         <div class="toolrow wb-freibtns">
           <button type="button" class="btn ghost wb-nichts${a.nichts ? ' active' : ''}">${escHtml(p.nichts)}</button>
-          ${p.ausBautagebuch ? '<button type="button" class="btn ghost wb-btb">📋 aus Bautagebuch übernehmen</button>' : ''}
+          ${p.ausBautagebuch ? '<button type="button" class="btn ghost wb-btb">' + Icon('clipboard-list') + ' aus Bautagebuch übernehmen</button>' : ''}
         </div>`);
       const ta = card.querySelector('.wb-frei');
       const nichtsBtn = card.querySelector('.wb-nichts');
@@ -963,9 +963,9 @@ const Wochenbericht = (() => {
       head.type = 'button';
       head.className = 'wb-sec' + (offen.has(s.id) ? ' open' : '');
       head.dataset.sid = s.id;
-      head.innerHTML = `<span class="chev">▶</span>
+      head.innerHTML = `<span class="chev">${Icon('chevron-right')}</span>
         <span class="wb-sec-name">${i + 1}. ${escHtml(s.titel)}</span>
-        <span class="grp-check wb-sec-check" hidden>✓</span>
+        <span class="grp-check wb-sec-check" hidden>${Icon('circle-check')}</span>
         <span class="grp-stat wb-sec-stat"></span>`;
       // Immer nur ein Abschnitt offen; beim Wechsel sind dessen Unterordner wieder zu.
       head.onclick = () => klappen('.wb-sec', secSel(s.id), () => {
@@ -985,9 +985,9 @@ const Wochenbericht = (() => {
         sub.type = 'button';
         sub.className = 'wb-sub' + (offenSub.has(p.id) ? ' open' : '');
         sub.dataset.pid = p.id;
-        sub.innerHTML = `<span class="chev">▶</span>
+        sub.innerHTML = `<span class="chev">${Icon('chevron-right')}</span>
           <span class="wb-sub-name">${escHtml(p.titel)}</span>
-          <span class="grp-check wb-sub-check" hidden>✓</span>
+          <span class="grp-check wb-sub-check" hidden>${Icon('circle-check')}</span>
           <span class="grp-stat wb-sub-stat"></span>`;
         sub.onclick = () => klappen('.wb-sub', subSel(p.id), () => {
           const auf = !offenSub.has(p.id);
@@ -1041,8 +1041,8 @@ const Wochenbericht = (() => {
           <div class="da-date">${escHtml(kwText(b.kw))} · ${escHtml(zeitraumText(b.kw))}</div>
           <div class="da-snip">${escHtml((b.gespraechspartner ? 'Gesprächspartner: ' + b.gespraechspartner + ' · ' : '') + info)}</div>
         </div>
-        <span class="da-go">öffnen ›</span>
-        <button class="da-del" title="Bericht löschen">🗑</button>`;
+        <span class="da-go">öffnen ${Icon('chevron-right', 'i-sm')}</span>
+        <button class="da-del" title="Bericht löschen" aria-label="Bericht löschen">${Icon('trash-2')}</button>`;
       const open = async () => { await oeffne(b.kw); window.scrollTo(0, 0); };
       div.querySelector('.da-main').onclick = open;
       div.querySelector('.da-go').onclick = open;

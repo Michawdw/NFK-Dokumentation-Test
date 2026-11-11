@@ -94,7 +94,7 @@ const App = (() => {
   // „Bewegung reduzieren" eingestellt hat, bekommt alles sofort und ohne Animation.
   const reduceMotion = window.matchMedia
     ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
-  const DUR = 220, DUR_FAST = 150;
+  const DUR = 200, DUR_FAST = 150;
   const EASE = 'cubic-bezier(.2,.7,.2,1)';
   const ohneAnimation = (el) => !el || reduceMotion.matches || typeof el.animate !== 'function';
   // Lange Inhalte (Ordner mit vielen Bildern) werden nur über den sichtbaren Teil animiert:
@@ -354,7 +354,7 @@ const App = (() => {
       $('#modalTitle').textContent = title;
       $('#modalBody').innerHTML = html + '<div class="bigchoice">' + optionen.map((o) =>
         `<button type="button" class="bigbtn${o.cls ? ' ' + escAttr(o.cls) : ''}" data-key="${escAttr(o.key)}">
-           <span class="bigbtn-emoji">${escHtml(o.emoji || '')}</span>
+           <span class="bigbtn-emoji">${o.icon ? Icon(o.icon) : escHtml(o.emoji || '')}</span>
            <span class="bigbtn-title">${escHtml(o.titel)}</span>
            <span class="bigbtn-sub">${escHtml(o.sub || '')}</span>
          </button>`).join('') + '</div>';
@@ -511,7 +511,7 @@ const App = (() => {
     const liste = document.createElement('div');
     liste.className = 'job-more-list';
     weitere.forEach((j) => liste.appendChild(jobItem(j, false)));
-    knopf.innerHTML = `<span class="chev">▶</span>Weitere Aufträge (${weitere.length})`;
+    knopf.innerHTML = `<span class="chev">${Icon('chevron-right')}</span>Weitere Aufträge (${weitere.length})`;
     const zeige = () => {
       liste.hidden = !weitereOffen;
       knopf.classList.toggle('open', weitereOffen);
@@ -545,8 +545,8 @@ const App = (() => {
         <div class="job-name">${escHtml(j.name || j.header.filiale || 'Auftrag')}</div>
         <div class="job-sub">${escHtml(sub)}</div>
       </div>
-      <button class="job-edit" title="Umbenennen">✎</button>
-      <button class="job-del" title="Löschen">🗑</button>`;
+      <button class="job-edit" title="Umbenennen" aria-label="Umbenennen">${Icon('pencil')}</button>
+      <button class="job-del" title="Löschen" aria-label="Löschen">${Icon('trash-2')}</button>`;
     div.querySelector('.job-main').onclick = () => { if (!active) switchJob(j.id); };
     div.querySelector('.job-edit').onclick = (e) => { e.stopPropagation(); renameJob(j); };
     div.querySelector('.job-del').onclick = (e) => { e.stopPropagation(); deleteJobFlow(j); };
@@ -608,9 +608,9 @@ const App = (() => {
     const wahl = await openAuswahl('Auftrag anlegen',
       '<p class="hint">Beginnt hier eine neue Baustelle, oder wird eine laufende übernommen?</p>',
       [
-        { key: 'neu', emoji: '🏗', titel: 'Neue Baustelle',
+        { key: 'neu', icon: 'hard-hat', titel: 'Neue Baustelle',
           sub: 'Stammdaten ausfüllen, danach die Vorprüfung' },
-        { key: 'uebernahme', emoji: '📥', titel: 'Baustelle übernehmen',
+        { key: 'uebernahme', icon: 'download', titel: 'Baustelle übernehmen',
           sub: 'Übergabe-Datei (.xlsx) oder Bilddoku-ZIP einlesen – Stammdaten kommen mit',
           sofort: () => $('#startImport').click() },
       ]);
@@ -680,7 +680,7 @@ const App = (() => {
       const knapp = !!sp && speicherKnapp(sp);
       warn.hidden = !knapp;
       if (knapp) {
-        warn.innerHTML = `<span class="bk-msg">⚠ Speicher wird knapp (noch ca. ${escHtml(groesse(sp.frei))} frei). `
+        warn.innerHTML = `<span class="bk-msg">Speicher wird knapp (noch ca. ${escHtml(groesse(sp.frei))} frei). `
           + 'Abgeschlossene Aufträge sichern (ZIP) und danach löschen – sonst können bald keine Bilder mehr gespeichert werden.</span>';
       }
     }
@@ -709,11 +709,11 @@ const App = (() => {
     el.hidden = false;
     if (done) {
       el.className = 'vp-status ok';
-      el.innerHTML = `<span>🔍 Vorprüfung ✓ abgeschlossen</span>
-        <button type="button" class="btn ghost vp-open">📄 Protokoll / ansehen</button>`;
+      el.innerHTML = `<span>Vorprüfung abgeschlossen</span>
+        <button type="button" class="btn ghost vp-open">${Icon('file-text')} Protokoll / ansehen</button>`;
     } else {
       el.className = 'vp-status open';
-      el.innerHTML = `<span>🔍 Vorprüfung offen (${answered}/${total} beantwortet)</span>
+      el.innerHTML = `<span>Vorprüfung offen (${answered}/${total} beantwortet)</span>
         <button type="button" class="btn primary vp-open">Vorprüfung öffnen</button>`;
     }
     const btn = el.querySelector('.vp-open');
@@ -750,17 +750,17 @@ const App = (() => {
     if (unsaved > 0) {
       cls = (!last || days >= 1) ? 'warn' : 'info';
       msg = !last
-        ? `⚠ Noch nie gesichert – ${photos.length} Bild${photos.length === 1 ? '' : 'er'} nur auf diesem Handy.`
-        : `⚠ ${unsaved} neue${unsaved === 1 ? 's Bild' : ' Bilder'} seit der letzten Sicherung (${ago}).`;
+        ? `Noch nie gesichert – ${photos.length} Bild${photos.length === 1 ? '' : 'er'} nur auf diesem Handy.`
+        : `${unsaved} neue${unsaved === 1 ? 's Bild' : ' Bilder'} seit der letzten Sicherung (${ago}).`;
     } else {
       cls = 'ok';
-      msg = `✓ Alle Bilder gesichert (zuletzt ${ago}).`;
+      msg = `Alle Bilder gesichert (zuletzt ${ago}).`;
     }
 
     el.className = 'backup-banner ' + cls;
     el.hidden = false;
     el.innerHTML = `<span class="bk-msg"></span>` +
-      `<button type="button" class="btn primary bk-save">💾 Jetzt sichern</button>`;
+      `<button type="button" class="btn primary bk-save">${Icon('save')} Jetzt sichern</button>`;
     el.querySelector('.bk-msg').textContent = msg;
     el.querySelector('.bk-save').onclick = busy(doBackupNow);
   }
@@ -1245,14 +1245,14 @@ const App = (() => {
         + (oberAllDone ? ' alldone' : '') + (oberNotNeeded ? ' skipped' : '')
         + (oberOrigin ? ' origin-' + oberOrigin.cls : '');
       if (!oberNotNeeded) head.style.setProperty('--p', needed.length ? (oberDone / needed.length).toFixed(3) : 0);
-      head.innerHTML = `<span class="chev">▶</span>
+      head.innerHTML = `<span class="chev">${Icon('chevron-right')}</span>
         <span class="grp-name">${escHtml(ober)}${oberOrigin ? ` <span class="origin-tag ${oberOrigin.cls}" title="${escAttr(oberOrigin.title)}">${escHtml(oberOrigin.short)}</span>` : ''}</span>
-        ${oberAllDone ? '<span class="grp-check" title="alle Pflichtbilder erledigt">✓</span>' : ''}
+        ${oberAllDone ? '<span class="grp-check" title="alle Pflichtbilder erledigt">' + Icon('circle-check') + '</span>' : ''}
         ${oberNotNeeded
           ? '<span class="grp-stat skip">nicht benötigt</span>'
           : `<span class="grp-stat${oberAllDone ? ' done' : ''}">${oberDone}/${needed.length}</span>`}
-        <button class="skip-btn" title="${oberSkip ? 'wieder benötigt' : 'als nicht benötigt markieren'}">${oberSkip ? '↩' : '∅'}</button>
-        ${oberOrigin ? '<button class="del-btn" title="Bereich mit allen Positionen löschen">🗑</button>' : ''}`;
+        <button class="skip-btn" title="${oberSkip ? 'wieder benötigt' : 'als nicht benötigt markieren'}" aria-label="${oberSkip ? 'wieder benötigt' : 'als nicht benötigt markieren'}">${Icon(oberSkip ? 'rotate-ccw' : 'circle-slash')}</button>
+        ${oberOrigin ? '<button class="del-btn" title="Bereich mit allen Positionen löschen" aria-label="Bereich mit allen Positionen löschen">' + Icon('trash-2') + '</button>' : ''}`;
       head.dataset.ober = ober;
       // Immer nur ein Oberordner offen; beim Wechsel sind dessen Unterordner wieder zu.
       head.onclick = () => treeUmschalten('.tree-ober', () => {
@@ -1294,14 +1294,14 @@ const App = (() => {
             + (uAllDone ? ' alldone' : '') + (uNotNeeded ? ' skipped' : '')
             + (uOrigin ? ' origin-' + uOrigin.cls : '');
           if (!uNotNeeded) uHead.style.setProperty('--p', uNeeded.length ? (uDone / uNeeded.length).toFixed(3) : 0);
-          uHead.innerHTML = `<span class="chev">▶</span>
+          uHead.innerHTML = `<span class="chev">${Icon('chevron-right')}</span>
             <span class="grp-name">${escHtml(uk)}${uOrigin ? ` <span class="origin-tag ${uOrigin.cls}" title="${escAttr(uOrigin.title)}">${escHtml(uOrigin.short)}</span>` : ''}</span>
-            ${uAllDone ? '<span class="grp-check" title="alle Pflichtbilder erledigt">✓</span>' : ''}
+            ${uAllDone ? '<span class="grp-check" title="alle Pflichtbilder erledigt">' + Icon('circle-check') + '</span>' : ''}
             ${uNotNeeded
               ? '<span class="grp-stat skip">nicht benötigt</span>'
               : `<span class="grp-stat${uAllDone ? ' done' : ''}">${uDone}/${uNeeded.length}</span>`}
-            <button class="skip-btn" title="${uSkip ? 'wieder benötigt' : 'als nicht benötigt markieren'}">${uSkip ? '↩' : '∅'}</button>
-            ${uOrigin ? '<button class="del-btn" title="Unterordner mit allen Positionen löschen">🗑</button>' : ''}`;
+            <button class="skip-btn" title="${uSkip ? 'wieder benötigt' : 'als nicht benötigt markieren'}" aria-label="${uSkip ? 'wieder benötigt' : 'als nicht benötigt markieren'}">${Icon(uSkip ? 'rotate-ccw' : 'circle-slash')}</button>
+            ${uOrigin ? '<button class="del-btn" title="Unterordner mit allen Positionen löschen" aria-label="Unterordner mit allen Positionen löschen">' + Icon('trash-2') + '</button>' : ''}`;
           uHead.dataset.unter = uKey;
           // Immer nur ein Unterordner offen.
           uHead.onclick = () => treeUmschalten('.tree-unter', () => {
@@ -1381,7 +1381,7 @@ const App = (() => {
       // Position auf „nicht benötigt" steht.
       statusLine = 'nicht benötigt';
     } else {
-      statusLine = n.done ? '<span class="row-check">✓</span> erledigt' : 'offen';
+      statusLine = n.done ? '<span class="row-check">' + Icon('check') + '</span> erledigt' : 'offen';
       // Vom Vorteam übernommene Bilder (per Übergabe-Import): liegen nicht physisch
       // auf diesem Gerät, zählen aber als erledigt. Klar als „Vorteam" kennzeichnen.
       if (n.prior > 0) {
@@ -1396,10 +1396,10 @@ const App = (() => {
       <div class="name-count">${statusLine}${originTag(n)}</div>
       <div class="thumbs"></div>
       <div class="name-actions">
-        <button class="skip-btn" title="${nodeSkip ? 'wieder benötigt' : 'als nicht benötigt markieren'}">${nodeSkip ? '↩' : '∅'}</button>
-        <button class="gal-btn" title="Aus Galerie">🖼️</button>
-        <button class="cam-btn" title="Foto aufnehmen">📷</button>
-        ${origin ? '<button class="del-btn" title="Eigenen Namen löschen">🗑</button>' : ''}
+        <button class="skip-btn" title="${nodeSkip ? 'wieder benötigt' : 'als nicht benötigt markieren'}" aria-label="${nodeSkip ? 'wieder benötigt' : 'als nicht benötigt markieren'}">${Icon(nodeSkip ? 'rotate-ccw' : 'circle-slash')}</button>
+        <button class="gal-btn" title="Aus Galerie" aria-label="Aus Galerie">${Icon('image')}</button>
+        <button class="cam-btn" title="Foto aufnehmen" aria-label="Foto aufnehmen">${Icon('camera')}</button>
+        ${origin ? '<button class="del-btn" title="Eigenen Namen löschen" aria-label="Eigenen Namen löschen">' + Icon('trash-2') + '</button>' : ''}
       </div>`;
 
     row.querySelector('.skip-btn').onclick = () => toggleSkip('nodes', n.key);
@@ -1518,7 +1518,7 @@ const App = (() => {
   async function addCustomNameFlow() {
     const nodes = await Structure.getMerged();
     const obers = Array.from(new Set(nodes.map((n) => n.ober)));
-    const oberOptions = [{ value: '__new__', label: '➕ Neuer Bereich…' }]
+    const oberOptions = [{ value: '__new__', label: '+ Neuer Bereich…' }]
       .concat(obers.map((o) => ({ value: o, label: o })));
 
     // Unterordner je Bereich – eigene Unterordner stecken in den Custom-Namen und tauchen
@@ -1527,7 +1527,7 @@ const App = (() => {
       const unters = Array.from(new Set(nodes.filter((n) => n.ober === ober && n.unter).map((n) => n.unter)));
       return [{ value: '__none__', label: '– keiner (direkt im Bereich) –' }]
         .concat(unters.map((u) => ({ value: u, label: u })))
-        .concat([{ value: '__new__', label: '➕ Neuer Unterordner…' }]);
+        .concat([{ value: '__new__', label: '+ Neuer Unterordner…' }]);
     };
     const startOber = obers[0] || '__new__';
 
@@ -1757,8 +1757,8 @@ const App = (() => {
           <div class="da-date">${titel}</div>
           <div class="da-snip">${escHtml(snippet || '—')}</div>
         </div>
-        <span class="da-go">öffnen ›</span>
-        <button class="da-del" title="Löschen">🗑</button>`;
+        <span class="da-go">öffnen ${Icon('chevron-right', 'i-sm')}</span>
+        <button class="da-del" title="Löschen" aria-label="Löschen">${Icon('trash-2')}</button>`;
       div.querySelector('.da-main').onclick = async () => {
         await flushDiary();            // aktuellen Tag sichern, bevor ein anderer geladen wird
         diaryDate = day.datum;
@@ -2017,12 +2017,12 @@ const App = (() => {
     div.innerHTML = `
       <div class="dr-head">
         <span class="dr-title"></span>
-        <button type="button" class="dr-del" title="Techniker entfernen" aria-label="Techniker entfernen">✕</button>
+        <button type="button" class="dr-del" title="Techniker entfernen" aria-label="Techniker entfernen">${Icon('x')}</button>
       </div>
       <input class="dr-name" type="text" placeholder="Name" value="${escAttr(r.name || '')}" autocomplete="off" />
       <input class="dr-name2" type="text" placeholder="2. Techniker (gleiche Zeiten)" value="${escAttr(name2)}" autocomplete="off"${name2 ? '' : ' hidden'} />
       <button type="button" class="dr-add2" hidden>+ 2. Techniker (gleiche Zeiten)</button>
-      <button type="button" class="btn ghost dr-copy">⏱ Zeiten von Techniker 1 übernehmen</button>
+      <button type="button" class="btn ghost dr-copy">${Icon('copy')} Zeiten von Techniker 1 übernehmen</button>
       <div class="dr-times">
         ${timeFieldHtml('dr-start', 'Start', r.start)}
         ${timeFieldHtml('dr-ende', 'Ende', r.ende)}
@@ -2379,7 +2379,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v83.15'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
+  const APP_VERSION = 'v84.1'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
@@ -2631,7 +2631,7 @@ const App = (() => {
     openInfoModal('Import nicht möglich',
       `<p>${escHtml(ursache)}</p>
        <p class="hint">Hilft das nicht weiter, schick den Fehlerbericht an Michael – dann ist klar, was passiert ist.</p>
-       <button type="button" class="btn" id="fehlerSendenBtn">📤 Fehlerbericht senden</button>
+       <button type="button" class="btn" id="fehlerSendenBtn">${Icon('share-2')} Fehlerbericht senden</button>
        <pre class="fehler-bericht">${escHtml(bericht)}</pre>`);
     $('#fehlerSendenBtn').onclick = () => fehlerberichtSenden(bericht);
   }
@@ -2727,18 +2727,18 @@ const App = (() => {
         .find((j) => j.id !== ziel.id && filialNr((j.header || {}).filiale) === nrPaket) || null;
       const optionen = [];
       if (vorhanden) {
-        optionen.push({ key: 'wechseln', emoji: '🔁',
+        optionen.push({ key: 'wechseln', icon: 'arrow-left-right',
           titel: `Zu Auftrag „${vorhanden.name || vorhanden.header.filiale}" wechseln`,
           sub: (zipImport ? 'Paket dort einlesen – Bilder und Stand kommen dazu' : 'Stand dort einlesen – Zähler kommen dazu')
             + ', nichts wird überschrieben. Dieser Auftrag bleibt unverändert.' });
       } else if (neuerAuftrag || paket.hatUebergabe) {
-        optionen.push({ key: 'neu', emoji: '🆕',
+        optionen.push({ key: 'neu', icon: 'circle-plus',
           titel: `Neuen Auftrag für Filiale ${nrPaket} anlegen`,
           sub: (zipImport ? 'Stammdaten, Bilder und Stand' : 'Stammdaten und Stand')
             + ' werden übernommen – Vorprüfung entfällt. Dieser Auftrag bleibt unverändert.' });
       }
       if (!neuerAuftrag) {
-        optionen.push({ key: 'aktuell', emoji: '⚠', cls: 'danger',
+        optionen.push({ key: 'aktuell', icon: 'triangle-alert', cls: 'danger',
           titel: 'Trotzdem in diesen Auftrag importieren',
           sub: zipImport
             ? `Fremde Bilder landen in der Dokumentation von ${nrEigen}`

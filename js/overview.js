@@ -44,7 +44,7 @@ const Overview = (() => {
         if (uk) html += `<div class="ov-unter">${esc(uk)}</div>`;
         for (const n of list) {
           const cls = n.skipped ? 'ov-item skip' : (n.done ? 'ov-item done' : 'ov-item open');
-          const mark = n.skipped ? '–' : (n.done ? '✓' : '○');
+          const mark = Icon(n.skipped ? 'minus' : (n.done ? 'check' : 'circle'));
           const cnt = n.skipped ? 'nicht benötigt' : `${n.ist}/${n.pflicht}`;
           const priorTag = (!n.skipped && n.prior > 0)
             ? ` <span class="prior-tag" title="vom Vorteam erledigt">Vorteam: ${n.prior}</span>` : '';
