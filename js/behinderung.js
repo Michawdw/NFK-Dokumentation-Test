@@ -268,7 +268,7 @@ const Behinderung = (() => {
         if (!first) first = block;
       }
     }
-    if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (first) first.scrollIntoView({ behavior: App.sanft(), block: 'center' });
     return !first;
   }
 

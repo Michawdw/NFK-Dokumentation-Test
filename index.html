@@ -137,13 +137,8 @@
         <button id="exportZipBtn" class="btn primary"><svg class="i" aria-hidden="true"><use href="#i-package"/></svg> ZIP-Export</button>
       </div>
       <div id="backupReminder" class="backup-banner" hidden></div>
-      <div class="toolrow">
-        <button id="handoverExportBtn" class="btn ghost"><svg class="i" aria-hidden="true"><use href="#i-upload"/></svg> Übergabe export (.xlsx)</button>
-        <label class="btn ghost filelabel">
-          <svg class="i" aria-hidden="true"><use href="#i-download"/></svg> Übergabe import
-          <input id="handoverImport" type="file" accept=".xlsx,.zip" hidden />
-        </label>
-      </div>
+      <!-- „Übergabe export/import" entfallen (v84.5): Die Übergabe-Datei steckt in jeder Bilddoku-ZIP,
+           eingelesen wird über „Beiträge zusammenführen" bzw. „Auftrag übernehmen" (gleiche Funktion). -->
       <div class="toolrow">
         <label class="btn ghost filelabel wide">
           <svg class="i" aria-hidden="true"><use href="#i-git-merge"/></svg> Beiträge zusammenführen (Bilder-ZIP)
@@ -344,17 +339,25 @@
   </div>
 
   <!-- ===================== BILD-GROSSANSICHT ===================== -->
-  <div id="photoOverlay" class="photo-overlay" hidden>
-    <div class="photo-box" role="dialog" aria-modal="true">
-      <div class="photo-head">
+  <!-- Vollbild wie iOS Fotos (js/fotoansicht.js): drei Folien (vorher/aktuell/nachher),
+       Leisten oben/unten. Gesten auf .pv-buehne, Knöpfe in den Leisten. -->
+  <div id="photoOverlay" class="photo-overlay" hidden role="dialog" aria-modal="true" aria-label="Fotoansicht">
+    <div class="pv-hg"></div>
+    <div class="pv-buehne">
+      <div class="pv-folie"><img class="pv-bild" alt="" draggable="false" /></div>
+      <div class="pv-folie"><img id="photoImg" class="pv-bild" alt="" draggable="false" /></div>
+      <div class="pv-folie"><img class="pv-bild" alt="" draggable="false" /></div>
+    </div>
+    <div class="pv-leiste pv-oben">
+      <button type="button" id="photoClose" class="pv-knopf" aria-label="Schließen"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+      <div class="pv-titelblock">
         <div id="photoTitle" class="photo-title"></div>
         <div id="photoSub" class="photo-sub"></div>
       </div>
-      <img id="photoImg" alt="" />
-      <div class="modal-actions">
-        <button id="photoClose" class="btn ghost">Schließen</button>
-        <button id="photoDelete" class="btn danger"><svg class="i" aria-hidden="true"><use href="#i-trash-2"/></svg> Bild löschen</button>
-      </div>
+      <span id="pvZaehler" class="pv-zaehler"></span>
+    </div>
+    <div class="pv-leiste pv-unten">
+      <button type="button" id="photoDelete" class="pv-knopf pv-loeschen"><svg class="i" aria-hidden="true"><use href="#i-trash-2"/></svg> Bild löschen</button>
     </div>
   </div>
 
@@ -367,6 +370,8 @@
   <!-- App-Module -->
   <script src="js/icons.js"></script>
   <script src="js/ui.js"></script>
+  <script src="js/sheet.js"></script>
+  <script src="js/fotoansicht.js"></script>
   <script src="js/datum.js"></script>
   <script src="js/db.js"></script>
   <script src="js/template.js"></script>

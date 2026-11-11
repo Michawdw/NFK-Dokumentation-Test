@@ -279,7 +279,7 @@ const Vorpruefung = (() => {
       if (card) card.classList.toggle('missing', bad);
       if (bad && !first) first = card;
     }
-    if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (first) first.scrollIntoView({ behavior: App.sanft(), block: 'center' });
   }
 
   async function complete() {

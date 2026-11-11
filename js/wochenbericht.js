@@ -861,7 +861,7 @@ const Wochenbericht = (() => {
   let renderGen = 0;
   let secStand = new Map();     // Abschnitt vollständig? (für den Haken-Effekt)
   let aufgeklappt = null;       // Selektor des gerade geöffneten Ordnerkopfs – wird weich aufgezogen
-  let klappt = false;           // Sperre gegen Doppel-Tippen während des Zuklappens
+  let klappt = false;           // läuft gerade eine Umschaltung? (weitere Tipps werden gemerkt)
   let offenSub = new Set();     // geöffneter Unterordner in Abschnitt 3 (pid), höchstens einer
   const secSel = (sid) => `.wb-sec[data-sid="${sid}"]`;
   const subSel = (pid) => `.wb-sub[data-pid="${pid}"]`;
@@ -878,8 +878,16 @@ const Wochenbericht = (() => {
   // stehen; ein frisch geöffneter Ordner gleitet danach unter die Kopfleiste (render()).
   // ebene: '.wb-sec' oder '.wb-sub'; umschalten() stellt offen/offenSub um und liefert, ob
   // der Ordner jetzt offen ist.
+  // Kein Input-Lockout (v84.3): Tipp während einer laufenden Umschaltung wird gemerkt (der
+  // jüngste zählt), die Zuklapp-Animation sofort beendet, danach läuft der Tipp regulär.
+  let wartend = null;
+  let zuBody = null;
   async function klappen(ebene, anker, umschalten) {
-    if (klappt) return;
+    if (klappt) {
+      wartend = { ebene, anker, umschalten };
+      if (zuBody && zuBody.getAnimations) zuBody.getAnimations().forEach((a) => { try { a.finish(); } catch (e) { /* egal */ } });
+      return;
+    }
     klappt = true;
     try {
       const kopf = document.querySelector(`#wbAbschnitte ${ebene}.open`);
@@ -887,7 +895,9 @@ const Wochenbericht = (() => {
       if (body && (body.classList.contains('wb-sec-body') || body.classList.contains('wb-sub-body'))) {
         kopf.classList.add('zu');
         const halt = App.halteKopf(document.querySelector(anker));
+        zuBody = body;
         await App.animClose(body);
+        zuBody = null;
         halt.jetzt();
         halt.stop();
       }
@@ -895,6 +905,12 @@ const Wochenbericht = (() => {
       await render(anker);
     } finally {
       klappt = false;
+      zuBody = null;
+    }
+    if (wartend) {
+      const w = wartend;
+      wartend = null;
+      await klappen(w.ebene, w.anker, w.umschalten);
     }
   }
 
@@ -1140,7 +1156,7 @@ const Wochenbericht = (() => {
     await render();                        // setzt über aktualisiere() die roten Markierungen
     const kopf = $('#wbKopf');
     const erstes = !kopfFertig() ? kopf : document.querySelector('.wb-item.missing, .wb-sub.missing');
-    if (erstes) erstes.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (erstes) erstes.scrollIntoView({ behavior: App.sanft(), block: 'center' });
     return fehlend.length + (kopfFertig() ? 0 : 1);
   }
 

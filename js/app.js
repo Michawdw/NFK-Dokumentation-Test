@@ -50,7 +50,7 @@ const App = (() => {
   }
 
   function animiereView(view, zurueck) {
-    if (!view || reduceMotion.matches) return;
+    if (!view) return;               // bei „Bewegung reduzieren“ macht CSS daraus eine Überblendung
     view.classList.remove('enter-fwd', 'enter-back', 'view-start-anim');
     void view.offsetWidth;            // Animation auch bei schnellem Hin und Her neu starten
     view.classList.add(zurueck ? 'enter-back' : 'enter-fwd');
@@ -95,7 +95,9 @@ const App = (() => {
   const reduceMotion = window.matchMedia
     ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
   const DUR = 200, DUR_FAST = 150;
-  const EASE = 'cubic-bezier(.2,.7,.2,1)';
+  const EASE = 'cubic-bezier(0.23, 1, 0.32, 1)';   // = --ease in styles.css
+  // Scroll-Verhalten: weich, außer bei „Bewegung reduzieren“.
+  const sanft = () => (reduceMotion.matches ? 'auto' : 'smooth');
   const ohneAnimation = (el) => !el || reduceMotion.matches || typeof el.animate !== 'function';
   // Lange Inhalte (Ordner mit vielen Bildern) werden nur über den sichtbaren Teil animiert:
   // Was unterhalb des Bildschirmrands liegt, sieht ohnehin niemand – so bleibt die
@@ -110,6 +112,11 @@ const App = (() => {
 
   // Aufklappen: Höhe 0 → natürliche Höhe. Das Element steht bereits fertig im DOM.
   function animOpen(el, obenBei) {
+    // „Bewegung reduzieren": keine Höhen-Bewegung, nur kurz einblenden.
+    if (el && reduceMotion.matches && typeof el.animate === 'function') {
+      el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: 'ease' });
+      return;
+    }
     if (ohneAnimation(el)) return;
     const h = el.offsetHeight;
     if (!h) return;
@@ -151,33 +158,34 @@ const App = (() => {
       const a = el.animate([
         { height: start + 'px', paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom, opacity: 1 },
         { height: '0px', paddingTop: '0px', paddingBottom: '0px', opacity: 0 },
-      ], { duration: DUR_FAST + 30, easing: 'ease-in', fill: 'forwards' });
+      ], { duration: DUR_FAST + 30, easing: EASE, fill: 'forwards' });   // kein ease-in: Reaktion sofort sichtbar
       beiEnde(a, DUR_FAST + 30, resolve);
     });
   }
 
-  // Overlays (Dialog, Bild-Großansicht): Öffnen spielt die CSS-Animation automatisch ab,
-  // Schließen blendet erst aus und setzt dann hidden. Öffnet währenddessen schon der
-  // nächste Dialog (Rückfrage direkt nach der vorigen), wird das Ausblenden abgebrochen.
+  // Overlays (Dialog, Bild-Großansicht): Ein-/Ausblenden übernimmt js/sheet.js – immer vom
+  // aktuellen Stand aus. Schließen blendet erst aus und setzt dann hidden. Öffnet
+  // währenddessen schon der nächste Dialog (Rückfrage direkt nach der vorigen), kehrt die
+  // Bewegung einfach um; das abgelöste Schließen meldet sich dann nicht mehr (kein hidden).
   function openOverlay(o) {
-    clearTimeout(o._schliessen);
-    o.classList.remove('closing');
+    const warVersteckt = o.hidden;
+    o._zu = null;
     o.hidden = false;
+    Sheet.zeigen(o, warVersteckt);
   }
   function closeOverlay(o, danach) {
-    clearTimeout(o._schliessen);
-    if (o.hidden || reduceMotion.matches) {
-      o.classList.remove('closing');
-      o.hidden = true;
+    if (o.hidden) {
       if (danach) danach();
       return;
     }
-    o.classList.add('closing');
-    o._schliessen = setTimeout(() => {
-      o.classList.remove('closing');
+    const auftrag = {};
+    o._zu = auftrag;
+    Sheet.verbergen(o, () => {
+      if (o._zu !== auftrag) return;      // inzwischen wieder geöffnet
+      o._zu = null;
       o.hidden = true;
       if (danach) danach();
-    }, DUR_FAST);
+    });
   }
 
   // Lade-Anzeige für Knöpfe mit längerer Arbeit (Export): Kringel am Knopf, gegen
@@ -195,7 +203,7 @@ const App = (() => {
 
   // „✓ erledigt"-Haken kurz aufspringen lassen.
   function pop(el) {
-    if (!el || reduceMotion.matches) return;
+    if (!el) return;                 // bei „Bewegung reduzieren“ nur Einblenden (CSS)
     el.classList.remove('pop');
     void el.offsetWidth;            // Animation neu starten
     el.classList.add('pop');
@@ -205,13 +213,14 @@ const App = (() => {
   function toast(msg, ms = 2600) {
     const t = $('#toast');
     t.textContent = msg;
-    t.classList.remove('closing');
-    t.hidden = false;
     clearTimeout(t._timer);
+    // Ein- und Ausblenden per CSS-Transition (.zeigen): eine neue Meldung während des
+    // Ausblendens kehrt die Bewegung vom aktuellen Stand aus um.
+    if (t.hidden) { t.hidden = false; void t.offsetWidth; }
+    t.classList.add('zeigen');
     t._timer = setTimeout(() => {
-      if (reduceMotion.matches) { t.hidden = true; return; }
-      t.classList.add('closing');
-      t._timer = setTimeout(() => { t.hidden = true; t.classList.remove('closing'); }, DUR_FAST);
+      t.classList.remove('zeigen');
+      t._timer = setTimeout(() => { t.hidden = true; }, 250);
     }, ms);
   }
   // Eine laufende Meldung („Führe Bilder zusammen…") darf nicht über einer Rückfrage stehen –
@@ -221,7 +230,7 @@ const App = (() => {
     const t = $('#toast');
     if (!t) return;
     clearTimeout(t._timer);
-    t.classList.remove('closing');
+    t.classList.remove('zeigen');
     t.hidden = true;
   }
 
@@ -415,7 +424,7 @@ const App = (() => {
       toast('Bitte zuerst die Stammdaten ausfüllen und speichern.');
     } else {
       const btn = f.querySelector('button[type="submit"]');
-      if (btn) btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (btn) btn.scrollIntoView({ behavior: sanft(), block: 'center' });
       toast('Bitte die Stammdaten erst speichern.');
     }
   }
@@ -518,7 +527,8 @@ const App = (() => {
       knopf.setAttribute('aria-expanded', String(weitereOffen));
     };
     knopf.onclick = async () => {
-      if (knopf._klappt) return;
+      // Kein Input-Lockout: Tipp während des Zuklappens kürzt es ab und wird danach ausgeführt.
+      if (knopf._klappt) { knopf._wartend = true; abkuerzen(liste); return; }
       weitereOffen = !weitereOffen;
       if (weitereOffen) { zeige(); animOpen(liste); return; }
       knopf._klappt = true;
@@ -531,6 +541,7 @@ const App = (() => {
       if (liste.getAnimations) liste.getAnimations().forEach((a) => a.cancel());
       liste.style.overflow = '';
       zeige();
+      if (knopf._wartend) { knopf._wartend = false; knopf.onclick(); }
     };
     zeige();
     cont.appendChild(knopf);
@@ -1162,8 +1173,17 @@ const App = (() => {
   }
   // Klick auf eine Ordner-Kopfzeile: den offenen Ordner dieser Ebene erst sichtbar zuklappen,
   // dann den neuen Zustand zeichnen. sel = Kopfzeilen-Klasse der Ebene.
+  // Kein Input-Lockout (v84.3): Ein Tipp während einer laufenden Umschaltung geht nicht
+  // verloren. Er wird gemerkt (nur der jüngste zählt), die laufende Zuklapp-Animation wird
+  // sofort zu Ende geführt, danach läuft der gemerkte Tipp regulär durch denselben Ablauf.
+  let treeWartend = null;
+  let treeZuBody = null;
   async function treeUmschalten(sel, umschalten, anker) {
-    if (treeKlappt) return;
+    if (treeKlappt) {
+      treeWartend = { sel, umschalten, anker };
+      abkuerzen(treeZuBody);
+      return;
+    }
     treeKlappt = true;
     try {
       const kopf = $(`#structureTree ${sel}.open`);
@@ -1182,8 +1202,10 @@ const App = (() => {
           body.style.overflow = 'hidden';
           halt.jetzt();
         }
+        treeZuBody = body;
         const zu = animClose(body);
         await zu;
+        treeZuBody = null;
         halt.jetzt();
         halt.stop();
       }
@@ -1191,7 +1213,18 @@ const App = (() => {
       await renderTree(anker);
     } finally {
       treeKlappt = false;
+      treeZuBody = null;
     }
+    if (treeWartend) {
+      const w = treeWartend;
+      treeWartend = null;
+      await treeUmschalten(w.sel, w.umschalten, w.anker);
+    }
+  }
+
+  // Laufende Klapp-Animation eines Ordnerinhalts sofort in den Endzustand bringen.
+  function abkuerzen(el) {
+    if (el && el.getAnimations) el.getAnimations().forEach((a) => { try { a.finish(); } catch (e) { /* egal */ } });
   }
 
   // Hält eine Kopfzeile während einer Animation auf derselben Bildschirmhöhe (scrollt Bild
@@ -1439,13 +1472,15 @@ const App = (() => {
 
     const thumbs = row.querySelector('.thumbs');
     const photos = await DB.getPhotos(currentJob.id, n.key);
+    const bilder = [];      // alle Bilder dieser Position – in der Großansicht durchblätterbar
     for (const p of photos) {
       const url = URL.createObjectURL(p.blob);
       (urls || activeUrls).push(url);
       const wrap = document.createElement('div');
       wrap.className = 'thumb-wrap';
       wrap.innerHTML = `<img src="${url}" alt="" loading="lazy" /><span class="thumb-seq">${String(p.seq).padStart(2, '0')}</span>`;
-      wrap.onclick = () => openPhotoViewer(n, p, url);
+      bilder.push({ photo: p, url, thumb: wrap });
+      wrap.onclick = () => openPhotoViewer(n, p, url, bilder);
       thumbs.appendChild(wrap);
     }
     return row;
@@ -1453,23 +1488,24 @@ const App = (() => {
 
   // Bild groß anzeigen (damit auf dem Handy erkennbar ist, um welches Bild es geht)
   // mit der Möglichkeit, genau dieses Bild zu löschen.
-  function openPhotoViewer(node, photo, url) {
-    const overlay = $('#photoOverlay');
-    $('#photoTitle').textContent = node.bildname;
-    $('#photoSub').textContent = 'Bild ' + String(photo.seq).padStart(2, '0') +
-      (node.unter ? ' · ' + node.unter : '') + ' · ' + node.ober;
-    $('#photoImg').src = url;
-    openOverlay(overlay);
+  // Ab v84.4 Vollbild wie iOS Fotos (js/fotoansicht.js): blättern durch alle Bilder dieser
+  // Position (bilder), Wischen nach unten schließt, Zoom. Gelöscht wird das gerade gezeigte Bild.
+  function openPhotoViewer(node, photo, url, bilder) {
+    const liste = (bilder && bilder.length) ? bilder : [{ photo, url, thumb: null }];
+    const start = Math.max(0, liste.findIndex((b) => b.photo.id === photo.id));
+    Fotoansicht.oeffnen({
+      liste,
+      index: start,
+      beschriftung: (b) => ({
+        titel: node.bildname,
+        sub: 'Bild ' + String(b.photo.seq).padStart(2, '0') + (node.unter ? ' · ' + node.unter : '') + ' · ' + node.ober,
+      }),
+      loeschen: (b) => bildLoeschen(node, b.photo),
+    });
+  }
 
-    const close = () => {
-      overlay.onclick = null;
-      // Object-URL nicht länger als nötig binden – aber erst nach dem Ausblenden lösen.
-      closeOverlay(overlay, () => { if (overlay.hidden) $('#photoImg').removeAttribute('src'); });
-    };
-    $('#photoClose').onclick = close;
-    overlay.onclick = (e) => { if (e.target === overlay) close(); }; // daneben tippen = schließen
-
-    $('#photoDelete').onclick = async () => {
+  async function bildLoeschen(node, photo) {
+    {
       const ok = await openConfirm(
         'Bild löschen?',
         `<p>Bild <b>${String(photo.seq).padStart(2, '0')}</b> von
@@ -1478,7 +1514,9 @@ const App = (() => {
          dieser Position werden anschließend neu durchnummeriert.</p>`,
         'Löschen', true);
       if (!ok) return;
-      close();
+      // Erst schließen (fliegt ins Vorschaubild zurück), dann löschen und neu aufbauen –
+      // der Neuaufbau gibt die Vorschaubilder frei, die die Ansicht noch zeigt.
+      await Fotoansicht.schliessen();
       try {
         await Photos.deleteFromNode(node.key, photo.id);
         await renderTree();
@@ -1488,7 +1526,7 @@ const App = (() => {
         console.error(err);
         toast('Fehler beim Löschen des Bildes');
       }
-    };
+    }
   }
 
   // Versteckte File-Inputs (Kamera mit capture, Galerie ohne) gemeinsam genutzt.
@@ -2294,7 +2332,7 @@ const App = (() => {
       `<p>${links}, ${rechts}.</p><p>Trotzdem ${aktion}?</p>`, 'Trotzdem', false, 'Korrigieren');
     if (!ok) {
       const feld = $('#diaryForm').anzTechniker;
-      feld.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      feld.scrollIntoView({ behavior: sanft(), block: 'center' });
       feld.focus();
     }
     return ok;
@@ -2380,9 +2418,8 @@ const App = (() => {
     // ZIP-Export = vollständige Sicherung: über doBackupNow, damit der Zeitpunkt
     // gemerkt und die Backup-Erinnerung aktualisiert wird.
     $('#exportZipBtn').onclick = busy(doBackupNow);
-    $('#handoverExportBtn').onclick = busy(handoverExport);
-    // Beide Knöpfe nehmen beides an (.xlsx wie .zip) – importAnyFile entscheidet.
-    $('#handoverImport').addEventListener('change', importAnyFile);
+    // Nimmt beides an (.xlsx wie .zip) – importAnyFile entscheidet. Die früheren Knöpfe
+    // „Übergabe export/import" sind seit v84.5 entfallen (ZIP enthält die Übergabe-Datei).
     $('#mergeImport').addEventListener('change', importAnyFile);
     // Derselbe Import auch auf der Startseite: die Knöpfe in der Bilddoku sind ohne
     // gespeicherte Stammdaten gesperrt – auf einem frischen Handy käme man sonst nie an
@@ -2409,7 +2446,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v84.3'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
+  const APP_VERSION = 'v84.7'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
@@ -2540,17 +2577,6 @@ const App = (() => {
   }
 
   // ----------------------------------------------------------- Übergabe (xlsx)
-  async function handoverExport() {
-    toast('Erzeuge Übergabe-Datei…');
-    try {
-      const name = await Handover.exportXlsx(currentJob);
-      toast('Übergabe exportiert: ' + name);
-    } catch (e) {
-      console.error(e);
-      toast('Übergabe-Export fehlgeschlagen: ' + (e.message || e));
-    }
-  }
-
   // Macht den übergebenen Auftrag zum aktuellen (nach Übergabe-/ZIP-Import).
   async function adoptJob(job) {
     currentJob = job;
@@ -2913,5 +2939,5 @@ const App = (() => {
   document.addEventListener('DOMContentLoaded', init);
 
   // Öffentlich für andere Module:
-  return { APP_VERSION, busy, animOpen, animClose, dreheChev, halteKopf, kopfNachOben, pop, toast, openInfoModal, openFormModal, openConfirm, shareFile, show, getCurrentJob, saveCurrentJob, adoptJob, filialNr, fehlerText };
+  return { APP_VERSION, sanft, busy, animOpen, animClose, dreheChev, halteKopf, kopfNachOben, pop, toast, openInfoModal, openFormModal, openConfirm, shareFile, show, getCurrentJob, saveCurrentJob, adoptJob, filialNr, fehlerText };
 })();
