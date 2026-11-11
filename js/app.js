@@ -925,6 +925,34 @@ const App = (() => {
         + escHtml(n) + (fehlt ? ' (nicht mehr verfügbar)' : '') + '</option>';
     }).join('');
     if (!names.length) sel.innerHTML = '<option value="">— keine Vorlage —</option>';
+    passeVorlagenSchrift();
+  }
+
+  // Ein <select> kann nicht umbrechen: Auf dem Handy war „NFK Vollverkabelung 3x43HE" bei
+  // 15 px abgeschnitten („NFK Vollverkabelun…"). Die Schrift wird deshalb so weit verkleinert
+  // (15 → mind. 11 px), dass der gewählte Name ganz hineinpasst. Ein ResizeObserver rechnet
+  // neu, sobald das Feld sichtbar wird oder sich die Breite ändert (Drehen, Fenstergröße).
+  const VORLAGE_SCHRIFT = { max: 15, min: 11 };
+  let vorlagenMessung = null;
+  function passeVorlagenSchrift() {
+    const sel = $('#templateSelect');
+    if (!sel) return;
+    if (!sel._beobachtet && window.ResizeObserver) {
+      sel._beobachtet = true;
+      new ResizeObserver(() => passeVorlagenSchrift()).observe(sel);
+    }
+    const opt = sel.options[sel.selectedIndex];
+    const text = opt ? opt.textContent : '';
+    const cs = getComputedStyle(sel);
+    // Platz für den Text: Breite minus Innenabstand links und Pfeil rechts (≈ 36 px, mit Sicherheitsrand – bei 28 px kappte Chrome noch die letzten Zeichen).
+    const platz = sel.clientWidth - parseFloat(cs.paddingLeft) - 36;
+    if (!text || platz <= 0) return;
+    vorlagenMessung = vorlagenMessung || document.createElement('canvas').getContext('2d');
+    vorlagenMessung.font = `${cs.fontWeight} ${VORLAGE_SCHRIFT.max}px ${cs.fontFamily}`;
+    const breite = vorlagenMessung.measureText(text).width;
+    const groesse = Math.max(VORLAGE_SCHRIFT.min,
+      Math.min(VORLAGE_SCHRIFT.max, Math.floor(VORLAGE_SCHRIFT.max * platz / breite * 10) / 10));
+    sel.style.fontSize = groesse + 'px';
   }
 
   // Rückmeldung zum Umzug beim Vorlagenwechsel (siehe Structure.uebernehmeStruktur).
@@ -2345,6 +2373,7 @@ const App = (() => {
     $('#newJobBtn').onclick = newJobFlow;
     $('#importTemplate').addEventListener('change', importTemplate);
     $('#templateSelect').addEventListener('change', onTemplateChange);
+    $('#templateSelect').addEventListener('change', passeVorlagenSchrift);
     $('#tplRefreshBtn').onclick = refreshCatalog;
     $('#addCustomBtn').onclick = addCustomNameFlow;
     $('#overviewBtn').onclick = () => Overview.show();
@@ -2380,7 +2409,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v84.2'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
+  const APP_VERSION = 'v84.3'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
