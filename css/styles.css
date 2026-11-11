@@ -98,9 +98,11 @@
   --ico-chevron-right: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22m9 18 6-6-6-6%22/%3E%3C/svg%3E");
 }
 
-/* ---------- Dunkler Modus: nur Tokens tauschen ---------- */
+/* ---------- Dunkler Modus: nur Tokens tauschen ----------
+   Folgt der Handy-Einstellung, außer man hat oben in der Kopfleiste selbst gewählt
+   (data-theme="light"/"dark" am <html>, gesetzt von js/ui.js). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0f1114;
     --surface: #17191e;
     --surface-2: #1d2026;
@@ -153,6 +155,65 @@
     --shadow-xs: 0 1px 2px rgba(0, 0, 0, .3);
     --shadow-overlay: 0 16px 40px -8px rgba(0, 0, 0, .6), 0 2px 6px rgba(0, 0, 0, .3);
   }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+    --bg: #0f1114;
+    --surface: #17191e;
+    --surface-2: #1d2026;
+    --surface-3: #262a31;
+    --border: #2a2e36;
+    --border-strong: #3a3f49;
+    --text: #e8eaee;
+    --text-2: #b4bac4;
+    --muted: #8a919d;
+
+    --brand: #2f6aa3;
+    --brand-hover: #3876b2;
+    --brand-fg: #8ab8e6;
+    --brand-subtle: #182433;
+    --brand-subtle-2: #1d2c3e;
+    --brand-border: #2b405a;
+    --ring: rgba(138, 184, 230, .35);
+
+    --success: #5cc68c;
+    --success-solid: #2b8a57;
+    --success-subtle: #13261c;
+    --success-subtle-2: #183323;
+    --success-border: #224a33;
+    --warning: #e3a542;
+    --warning-solid: #b77406;
+    --warning-subtle: #2a2010;
+    --warning-border: #4d3a17;
+    --danger: #f08178;
+    --danger-solid: #c4392f;
+    --danger-subtle: #2c1716;
+    --danger-border: #552723;
+    --danger-ring: rgba(240, 129, 120, .22);
+    --violet: #b9a3ee;
+    --violet-subtle: #241d36;
+    --violet-line: #8b6fd0;
+    --orange: #f0b26b;
+    --orange-subtle: #2c2012;
+    --orange-line: #d0873a;
+    --slate: #a9bccc;
+    --slate-subtle: #1e262e;
+    --slate-line: #6f889d;
+
+    --open-1-head: #1a222d; --open-1-body: #151b23; --open-1-line: #2a3646;
+    --open-2-head: #1e2836; --open-2-body: #19212b; --open-2-line: #324257;
+
+    --scrim: rgba(0, 0, 0, .6);
+    --toast-bg: #e8eaee;
+    --toast-fg: #111827;
+    --topbar-bg: rgba(23, 25, 30, .86);
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, .3);
+    --shadow-overlay: 0 16px 40px -8px rgba(0, 0, 0, .6), 0 2px 6px rgba(0, 0, 0, .3);
+}
+:root[data-theme="light"] { color-scheme: light; }
+/* Beim Umschalten weich überblenden */
+.theme-wechsel, .theme-wechsel *, .theme-wechsel *::before, .theme-wechsel *::after {
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease, fill 200ms ease !important;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -1223,3 +1284,73 @@ input[type="date"] {
   min-height: calc(1.2em + 26px);
 }
 input[type="date"]::-webkit-date-and-time-value { text-align: left; }
+
+/* =====================================================================
+   v84.2 – deutlichere Hierarchie
+   ===================================================================== */
+
+/* ---------- Kopfleiste: Titel + aktive Baustelle, Hell/Dunkel-Knopf ---------- */
+.topbar-titel { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.topbar-titel h1 { flex: none; font-size: 18px; font-weight: 650; letter-spacing: -.015em; line-height: 1.25; }
+.topbar-sub {
+  font-size: 12px; font-weight: 500; color: var(--muted); line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.theme-btn { margin-left: 0; color: var(--text-2); }
+.theme-btn .i { width: 20px; height: 20px; }
+
+/* ---------- Überschriften: Seite groß, Abschnitte als kleine Überzeile ---------- */
+.jobs-head h2 { font-size: 26px; font-weight: 700; letter-spacing: -.025em; line-height: 1.2; }
+.jobs-head { margin: 8px 0 12px; row-gap: 12px; }
+main h2:not(.jobs-head h2), main h3 {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted); margin: 36px 0 10px;
+}
+main h2 .sub-current { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.arch-head { margin-top: 8px; }
+main .wb-kopf h3, main .vp-item h3 { margin-top: 0; }
+.bh-photoblock h3 { margin-top: 20px; }
+
+/* ---------- Startseite: Stammdaten als kompakte Karte ---------- */
+.stamm-block.kompakt #projectForm, .stamm-block.kompakt > .hint { display: none; }
+.stamm-karte {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 14px 12px 14px 16px; box-shadow: var(--shadow-xs); margin-bottom: 12px;
+}
+.sk-main { flex: 1; min-width: 0; }
+.sk-titel { font-size: 17px; font-weight: 650; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.sk-meta { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 4px; font-size: 13px; color: var(--text-2); }
+.sk-meta span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.sk-meta .i { color: var(--muted); }
+.sk-edit { flex: 0 0 auto; min-height: 40px; padding: 0 12px; font-size: 14px; }
+.stamm-block:not(.kompakt) .stamm-karte { border-bottom-left-radius: var(--radius); border-bottom-right-radius: var(--radius); }
+/* Funktionen direkt darunter: Abstand etwas kleiner, sie sind das Hauptziel */
+.stamm-block.kompakt + .vp-status { margin-top: 0; }
+
+/* ---------- Bilddoku: Positionen als schlanke Zeilen ----------
+   Name + Zähler links, Knöpfe rechts in derselben Zeile; Status und Vorschaubilder darunter. */
+.name-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "label label actions" "badge count actions" "thumbs thumbs thumbs";
+  align-items: center; column-gap: 8px; row-gap: 4px;
+  padding: 10px 8px 10px 12px; margin: 6px 0;
+}
+.name-row > .name-head { display: contents; }
+.name-row .name-label { grid-area: label; }
+.name-row .count-badge { grid-area: badge; justify-self: start; }
+.name-row > .name-count { grid-area: count; font-size: 12px; min-width: 0; }
+.name-row > .thumbs { grid-area: thumbs; margin-top: 6px; }
+.name-row > .name-actions { grid-area: actions; gap: 4px; align-self: center; }
+.name-row .name-label { font-size: 15px; line-height: 1.35; }
+.name-row .count-badge { min-width: 0; padding: 1px 7px; font-size: 12px; flex: 0 0 auto; }
+.name-actions > button { flex: 0 0 auto; width: 44px; height: 44px; }
+.name-actions .skip-btn { width: 32px; border-color: transparent; background: transparent; box-shadow: none; color: var(--muted); }
+.name-actions .gal-btn .i, .name-actions .cam-btn .i { width: 20px; height: 20px; }
+.name-actions .del-btn { width: 32px; height: 44px; border-color: transparent; background: transparent; }
+.thumbs img { width: 56px; height: 56px; }
+/* Geöffnete Ordner: weniger Einzug, damit die Namen am Handy Platz haben */
+.tree-ober.open + .tree-body { padding: 2px 6px 8px; }
+.tree-unter.open + .tree-body { margin-left: 0; padding: 2px 6px 8px; }
+.tree-unter { margin-left: 0; }
+.stamm-block.kompakt h2 .sub-current { display: none; }
