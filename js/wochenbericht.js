@@ -827,13 +827,12 @@ const Wochenbericht = (() => {
       const ok = st.fertig >= st.gesamt;
       // Haken-Effekt nur, wenn der Abschnitt gerade eben vollständig geworden ist.
       const key = current.kw + ':' + s.id;
-      if (ok && secStand.get(key) === false) App.pop(head.querySelector('.wb-sec-check'));
+      if (ok && secStand.get(key) === false) App.pop(head.querySelector('.grp-folder'));
       secStand.set(key, ok);
       head.style.setProperty('--p', st.gesamt ? (st.fertig / st.gesamt).toFixed(3) : 0);
       head.classList.toggle('done', ok);
       head.classList.toggle('missing', pruefModus && !ok);
       head.querySelector('.wb-sec-stat').textContent = st.fertig + '/' + st.gesamt;
-      head.querySelector('.wb-sec-check').hidden = !ok;
     }
     for (const p of allePunkte()) {
       const sub = document.querySelector(subSel(p.id));
@@ -931,9 +930,9 @@ const Wochenbericht = (() => {
       head.classList.toggle('fertig', gruen);
       head.classList.toggle('missing', pruefModus && !ok);
       const stat = head.querySelector('.wb-sub-stat');
-      stat.textContent = opt ? (opt.kurz || opt.label.replace(/^noch /, '')) : 'offen';
+      stat.querySelector('.stat-txt').textContent = opt ? (opt.kurz || opt.label.replace(/^noch /, '')) : 'offen';
       stat.classList.toggle('done', gruen);
-      head.querySelector('.wb-sub-check').hidden = !ok;
+      stat.querySelector('.stat-ck').hidden = !ok;
       return;
     }
     const st = fortschrittStand(p, a);
@@ -945,9 +944,9 @@ const Wochenbericht = (() => {
     head.classList.toggle('fertig', a.status === 'fertig' || (!!st.gesamt && st.fertig >= st.gesamt));
     head.classList.toggle('missing', pruefModus && !ok);
     const stat = head.querySelector('.wb-sub-stat');
-    stat.textContent = zaehler;
+    stat.querySelector('.stat-txt').textContent = zaehler;
     stat.classList.toggle('done', a.status === 'fertig');
-    head.querySelector('.wb-sub-check').hidden = !ok;
+    stat.querySelector('.stat-ck').hidden = !ok;
   }
 
   async function render(anker) {
@@ -979,9 +978,8 @@ const Wochenbericht = (() => {
       head.type = 'button';
       head.className = 'wb-sec' + (offen.has(s.id) ? ' open' : '');
       head.dataset.sid = s.id;
-      head.innerHTML = `<span class="chev">${Icon('chevron-right')}</span><span class="grp-folder" aria-hidden="true">${Icon('folder', 'zu')}${Icon('folder-open', 'auf')}</span>
+      head.innerHTML = `<span class="chev">${Icon('chevron-right')}</span><span class="grp-folder" aria-hidden="true">${Icon('folder', 'zu')}${Icon('folder-open', 'auf')}${Icon('folder-check', 'zu-fertig')}${Icon('folder-open-check', 'auf-fertig')}</span>
         <span class="wb-sec-nr">${i + 1}.</span><span class="wb-sec-name">${escHtml(s.titel)}</span>
-        <span class="grp-check wb-sec-check" hidden>${Icon('circle-check')}</span>
         <span class="grp-stat wb-sec-stat"></span>`;
       // Immer nur ein Abschnitt offen; beim Wechsel sind dessen Unterordner wieder zu.
       head.onclick = () => klappen('.wb-sec', secSel(s.id), () => {
@@ -1003,8 +1001,7 @@ const Wochenbericht = (() => {
         sub.dataset.pid = p.id;
         sub.innerHTML = `<span class="chev">${Icon('chevron-right')}</span>
           <span class="wb-sub-name">${escHtml(p.titel)}</span>
-          <span class="grp-check wb-sub-check" hidden>${Icon('circle-check')}</span>
-          <span class="grp-stat wb-sub-stat"></span>`;
+          <span class="grp-stat wb-sub-stat"><span class="stat-ck" hidden>${Icon('check')}</span><span class="stat-txt"></span></span>`;
         sub.onclick = () => klappen('.wb-sub', subSel(p.id), () => {
           const auf = !offenSub.has(p.id);
           offenSub = auf ? new Set([p.id]) : new Set();

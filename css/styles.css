@@ -1602,8 +1602,21 @@ main .wb-kopf h3, main .vp-item h3 { margin-top: 0; }
 /* Ordnersymbol vor dem Namen des Oberordners (zu / offen) */
 .grp-folder { flex: 0 0 auto; display: inline-flex; color: var(--lvl-strong); line-height: 1; }
 .grp-folder .i { width: 1.25rem; height: 1.25rem; }
-.grp-folder .auf, .open > .grp-folder .zu { display: none; }
+/* Vier Zustände (v84.20): zu · offen · zu + fertig · offen + fertig. Fertig zeigt den Haken IM
+   Ordner – kein eigener Haken mehr neben dem Namen, der Name behält die volle Breite. */
+.grp-folder .i { display: none; }
+.grp-folder .zu { display: inline-block; }
+.open > .grp-folder .zu { display: none; }
 .open > .grp-folder .auf { display: inline-block; }
+:is(.alldone, .wb-sec.done) > .grp-folder .zu,
+:is(.alldone, .wb-sec.done) > .grp-folder .auf { display: none; }
+:is(.alldone, .wb-sec.done):not(.open) > .grp-folder .zu-fertig { display: inline-block; }
+:is(.alldone, .wb-sec.done).open > .grp-folder .auf-fertig { display: inline-block; }
+/* Unterordner/Unterpunkte (kein Ordnersymbol): kleiner Haken in der grünen Zähler-Pille */
+.grp-stat { display: inline-flex; align-items: center; gap: 2px; }
+.grp-stat .i.stat-ck, .grp-stat .stat-ck .i { width: .75rem; height: .75rem; stroke-width: 3; }
+.grp-stat .stat-ck { display: inline-flex; }
+.grp-stat .stat-ck[hidden] { display: none; }
 .tree-ober, .wb-sec { gap: var(--sp-2); }
 .alldone > .grp-folder, .wb-sec.done > .grp-folder { color: var(--success); }
 .skipped > .grp-folder { color: var(--muted); }

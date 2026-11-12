@@ -1411,9 +1411,8 @@ const App = (() => {
         + (oberAllDone ? ' alldone' : '') + (oberNotNeeded ? ' skipped' : '')
         + (oberOrigin ? ' origin-' + oberOrigin.cls : '');
       if (!oberNotNeeded) head.style.setProperty('--p', needed.length ? (oberDone / needed.length).toFixed(3) : 0);
-      head.innerHTML = `<span class="chev">${Icon('chevron-right')}</span><span class="grp-folder" aria-hidden="true">${Icon('folder', 'zu')}${Icon('folder-open', 'auf')}</span>
+      head.innerHTML = `<span class="chev">${Icon('chevron-right')}</span><span class="grp-folder" aria-hidden="true">${Icon('folder', 'zu')}${Icon('folder-open', 'auf')}${Icon('folder-check', 'zu-fertig')}${Icon('folder-open-check', 'auf-fertig')}</span>
         <span class="grp-name">${escHtml(ober)}${oberOrigin ? ` <span class="origin-tag ${oberOrigin.cls}" title="${escAttr(oberOrigin.title)}">${escHtml(oberOrigin.short)}</span>` : ''}</span>
-        ${oberAllDone ? '<span class="grp-check" title="alle Pflichtbilder erledigt">' + Icon('circle-check') + '</span>' : ''}
         ${oberNotNeeded
           ? '<span class="grp-stat skip">nicht benötigt</span>'
           : `<span class="grp-stat${oberAllDone ? ' done' : ''}">${oberDone}/${needed.length}</span>`}
@@ -1435,7 +1434,8 @@ const App = (() => {
         deleteCustomFolderFlow(allNodes, ober, 'obers', ober);
       };
       frag.appendChild(head);
-      merke('o:' + ober, oberAllDone, head.querySelector('.grp-check'));
+      if (oberAllDone) head.querySelector('.grp-folder').title = 'alle Pflichtbilder erledigt';
+      merke('o:' + ober, oberAllDone, head.querySelector('.grp-folder'));
 
       if (!oberExpanded) continue; // Inhalt zugeklappter Ordner wird nicht gebaut
 
@@ -1462,10 +1462,9 @@ const App = (() => {
           if (!uNotNeeded) uHead.style.setProperty('--p', uNeeded.length ? (uDone / uNeeded.length).toFixed(3) : 0);
           uHead.innerHTML = `<span class="chev">${Icon('chevron-right')}</span>
             <span class="grp-name">${escHtml(uk)}${uOrigin ? ` <span class="origin-tag ${uOrigin.cls}" title="${escAttr(uOrigin.title)}">${escHtml(uOrigin.short)}</span>` : ''}</span>
-            ${uAllDone ? '<span class="grp-check" title="alle Pflichtbilder erledigt">' + Icon('circle-check') + '</span>' : ''}
             ${uNotNeeded
               ? '<span class="grp-stat skip">nicht benötigt</span>'
-              : `<span class="grp-stat${uAllDone ? ' done' : ''}">${uDone}/${uNeeded.length}</span>`}
+              : `<span class="grp-stat${uAllDone ? ' done' : ''}"${uAllDone ? ' title="alle Pflichtbilder erledigt"' : ''}>${uAllDone ? Icon('check', 'stat-ck') : ''}${uDone}/${uNeeded.length}</span>`}
             <button class="skip-btn" title="${uSkip ? 'wieder benötigt' : 'als nicht benötigt markieren'}" aria-label="${uSkip ? 'wieder benötigt' : 'als nicht benötigt markieren'}">${Icon(uSkip ? 'rotate-ccw' : 'circle-slash')}</button>
             ${uOrigin ? '<button class="del-btn" title="Unterordner mit allen Positionen löschen" aria-label="Unterordner mit allen Positionen löschen">' + Icon('trash-2') + '</button>' : ''}`;
           uHead.dataset.unter = uKey;
@@ -1483,7 +1482,7 @@ const App = (() => {
             deleteCustomFolderFlow(list, uk, 'unters', uKey);
           };
           body.appendChild(uHead);
-          merke('u:' + uKey, uAllDone, uHead.querySelector('.grp-check'));
+          merke('u:' + uKey, uAllDone, uHead.querySelector('.grp-stat'));
 
           if (uExpanded) {
             const uBody = document.createElement('div');
@@ -2567,7 +2566,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v84.19'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
+  const APP_VERSION = 'v84.20'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
