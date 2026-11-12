@@ -920,6 +920,7 @@ fieldset.techs legend { font-weight: 600; padding: 0 var(--sp-1h); }
 .ov-item { display: flex; align-items: center; gap: var(--sp-2h); padding: var(--sp-2) var(--sp-1); border-bottom: 1px solid var(--border); font-size: var(--fs-15); }
 .ov-item:last-child { border-bottom: 0; }
 .ov-item.done { color: var(--muted); }
+.ov-fertig { display: flex; align-items: center; gap: var(--sp-2); margin: var(--sp-4) 0; color: var(--success); font-weight: 600; }
 .ov-mark { width: 1.125rem; display: inline-flex; justify-content: center; flex: 0 0 auto; }
 .ov-mark .i { width: 1rem; height: 1rem; }
 .ov-item.open .ov-mark { color: var(--danger); }

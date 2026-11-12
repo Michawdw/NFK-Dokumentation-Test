@@ -234,6 +234,28 @@ const App = (() => {
     t.hidden = true;
   }
 
+  // Handy-Zurück-Taste bei Info-Fenstern (z. B. Übersicht, v84.10): Beim Öffnen wird ein
+  // eigener Verlaufseintrag angelegt, die Zurück-Taste schließt dann nur das Fenster (wie ✕)
+  // statt die Ansicht dahinter zu wechseln bzw. die App zu beenden. Schließt man per ✕ oder
+  // „Schließen", wird der Eintrag mit history.back() entfernt – dieses popstate wird ignoriert.
+  let infoVerlauf = false;
+  let infoPopIgnorieren = 0;
+  function infoVerlaufWeg() {
+    if (!infoVerlauf) return;
+    infoVerlauf = false;
+    infoPopIgnorieren++;
+    history.back();
+  }
+  function infoZurueckTaste() {
+    if (infoPopIgnorieren) { infoPopIgnorieren--; return true; }
+    if (!infoVerlauf) return false;
+    infoVerlauf = false;
+    const o = $('#modalOverlay');
+    if (o.hidden || o._zu) return false;   // Fenster schon zu: normal weiter zurück
+    $('#modalClose').click();              // wie ✕ – schließt auch einen Dialog, der es ersetzt hat
+    return true;
+  }
+
   function openInfoModal(title, html) {
     $('#modalTitle').textContent = title;
     $('#modalBody').innerHTML = html;
@@ -241,7 +263,11 @@ const App = (() => {
     $('#modalOk').textContent = 'Schließen';
     const overlay = $('#modalOverlay');
     openOverlay(overlay);
-    const close = () => { closeOverlay(overlay); };
+    if (!infoVerlauf) {
+      history.pushState(Object.assign({}, history.state, { info: true }), '');
+      infoVerlauf = true;
+    }
+    const close = () => { closeOverlay(overlay); infoVerlaufWeg(); };
     $('#modalOk').onclick = close;
     $('#modalClose').onclick = close;   // ✕ oben in der klebenden Kopfzeile
     $('#modalBody').scrollTop = 0;
@@ -2381,6 +2407,8 @@ const App = (() => {
     window.addEventListener('popstate', (e) => {
       // Offene Fotoansicht: Zurück schließt nur sie (siehe Fotoansicht.zurueckTaste).
       if (typeof Fotoansicht !== 'undefined' && Fotoansicht.zurueckTaste()) return;
+      // Offenes Info-Fenster (Übersicht): Zurück schließt nur das Fenster.
+      if (infoZurueckTaste()) return;
       let ziel = (e.state && e.state.nfk) ? e.state.nfk : 'view-start';
       // Verlaufseinträge stammen evtl. von einem vorher geöffneten Auftrag – ohne gespeicherte
       // Stammdaten führt auch der Verlauf nicht in einen Arbeitsbereich.
@@ -2448,7 +2476,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v84.9'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
+  const APP_VERSION = 'v84.11'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;

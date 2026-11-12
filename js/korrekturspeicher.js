@@ -3,10 +3,10 @@
    Diese Datei wird vom AVL-Tool (Reiter „Bautagebuch-Texte“, Button „Merkzettel für die App
    speichern“) erzeugt und von Hand in den Ordner js/ kopiert – nicht von Hand bearbeiten.
    Danach tools/make_deploy.py starten: erhöht die Version, wenn sich der Merkzettel geändert hat.
-   Erzeugt am 10.11.2026 12:48, 62 Einträge.
+   Erzeugt am 12.11.2026 08:18, 80 Einträge.
 */
 var KORREKTURSPEICHER = {
-  "stand": "2026-11-10",
+  "stand": "2026-11-12",
   "taetigkeiten": {
     "ablängen der datenkabel:service kasse,sco kassen 1-6,exit gate, kasse 1-3,reserve kasse,cctv 1+2, aktenraum,kleinverteiler,ap4,headsetkanal, pze,ic1,ic2": "Ablängen der Datenleitungen für Servicekasse, SCO-Kassen 1 bis 6, Exit Gate, Kasse 1 bis 3, Reservekasse, CCTV 1 und 2, Aktenraum, Kleinverteiler (KV), Access Point (AP) 4, Headsetkanal, PZE, I.C. 1 sowie I.C. 2 durchgeführt.",
     "ablängen der transferkabel für und einseitiges auflegen durchgeführt": "Ablängen der Transferkabel für und einseitiges Auflegen durchgeführt.",
@@ -22,9 +22,12 @@ var KORREKTURSPEICHER = {
     "ausbau: büro, vocovo1, kabelbinder entfernen + steigtrassen abschellen": "Ausbau der Datendosen für Büro sowie VoCoVo 1 durchgeführt.\nKabelbinder entfernt.\nSteigtrassen abgeschellt.",
     "beginn des ausbaus der kabelwege für die instore communication (i.c.) im verkaufsbereich": "Beginn des Ausbaus der Kabelwege für die Instore Communication (I.C.) im Verkaufsbereich.",
     "brücken für die instore communication (i.c.) eingezogen": "Brücken für die In-Store-Communication (I.C.) eingezogen.",
+    "checks auf die datenleitungen aufgelegt": "Keystone-Module auf die Datenleitungen aufgelegt.",
     "checks auf die rangierkabel montiert. kabel in die nws eingeführt": "Keystone-Module auf die Rangierkabel montiert.\nKabel in die Netzwerkschränke (NWS) eingeführt.",
+    "demontage und umversetzen kleinverteiler (kv) soweit die kabel umverlegt durchgeführt": "Demontage und Umversetzen des Kleinverteilers (KV) durchgeführt. Die Kabel wurden entsprechend umverlegt.",
     "einbau und montage der vorhandenen hardware in den netzwerkschränken (nws) fortgeführt": "Einbau und Montage der vorhandenen Hardware in den Netzwerkschränken (NWS) fortgeführt.",
     "einbringen der netzwerkschränke (nws) da diese draussen im regen standen)": "Die Netzwerkschränke (NWS) wurden eingebracht, da diese im Außenbereich im Regen standen.",
+    "einkürzen der datenleitungen für sco-kassen wandbereich": "Einkürzen der Datenleitungen für SCO-Kassen Wandbereich.",
     "einsatz am 09.11.2026": "2. Einsatz am 09.11.2026.",
     "fertigstellung der brücken für i.c": "Kabelbrücken für die In-Store-Communication (I.C.) fertiggestellt.",
     "fertigstellung des ausbaus der kabelwege für die instore communication (i.c.)": "Fertigstellung des Ausbaus der Kabelwege für die In-Store-Communication (I.C.).",
@@ -45,34 +48,49 @@ var KORREKTURSPEICHER = {
     "material auf die baustelle geräumt außmetern der datenkabel für service kasse,sco kasse 1-6,exit gate,kasse 1-3 + reserve kasse,cctv 1+2,aktenraum,kleinverteiler,ap4": "Arbeitsmaterialien ausgeladen.\nAusmessen der Datenleitungen für Servicekasse, SCO-Kassen 1 bis 6, Exit Gate, Kasse 1 bis 3, Reservekasse, CCTV 1 und 2, Aktenraum, Kleinverteiler (KV) sowie Access Point (AP) 4 durchgeführt.",
     "messen der noch fehlenden datenleitungen, ausgenommen kassen sowie digital signage 2 und 3": "Messtechnische Prüfung der noch fehlenden Datenleitungen, ausgenommen Kassen sowie Digital Signage 2 und 3.",
     "netzteil an frederixbox angeschlossen kein w lan telefoniert mit support flex pos neustart der baracuda und frederix box von nöten . ds endverlegt unter erschwerten bedingungen. es war unmöglich ds im kassenbereich zu verlegen , da elektriker ein leerrohr verlegt hat aber immer irgendeine blockade in beiden rohren war nach stundenlangen versuchen auch nicht möglich eine endverlegung zustandezubringen avl 2 mann a 4 stunden . ds eingangsbereich musste kommplett vom kassenbereich zurück in den pfandbereich gezogen werden und vom pfand über leerrohr bodeneinspeisung zum ausgangsbereich gezogen werden ,leerrohr nicht gefunden im pfandbereich dadurch war die endverlegung nicht möglich": "Netzteil an der Frederix Box angeschlossen. Aufgrund der fehlenden WLAN-Verbindung telefonische Abstimmung mit dem FlexPos Support durchgeführt. Ein Neustart der Barracuda sowie der Frederix Box war erforderlich.\nEndverlegung der Datenleitungen für Digital Signage (DS) unter erschwerten Bedingungen durchgeführt.\nDie Datenleitungen für Digital Signage (DS) im Eingangsbereich mussten vollständig vom Kassenbereich in den Pfandbereich zurückgezogen und anschließend über ein Leerrohr der Bodeneinspeisung in den Ausgangsbereich verlegt werden. Da das Leerrohr im Pfandbereich nicht gefunden werden konnte, war eine Endverlegung nicht möglich.",
+    "probleme mit dem kunden w- lan. fehler behoben": "Probleme mit dem Kunden-WLAN behoben.",
     "restlich lautsprecher gehangen": "Restliche Lautsprecher montiert.",
     "schränke türen eingehangen": "Türen der Netzwerkschränke (NWS) eingehangen.",
     "stellen und ausrichten der nws": "Netzwerkschränke (NWS) aufgestellt und ausgerichtet.",
     "säuberung der baustelle durchgeführt": "Die Baustelle wurde beräumt.",
+    "telefone (testanruf an herrn wichert) in betrieb genommen": "Telefone in Betrieb genommen. Testanruf mit Herrn Wichert durchgeführt.",
     "transferkabel beschriftet und abgelängt": "Beschriften und Ablängen der Transferkabel durchgeführt.",
-    "trassierung richtung technik und bür wird zurück gebaut und bis 24 .07.2026 wieder montiert da lüftungskanäle geräte": "Trassierung Richtung Technik und Büro wird zurück gebaut und bis 24 .07.2026 wieder montiert da Lüftungskanäle Geräte montiert werden müssen"
+    "trassierung richtung technik und bür wird zurück gebaut und bis 24 .07.2026 wieder montiert da lüftungskanäle geräte": "Trassierung Richtung Technik und Büro wird zurück gebaut und bis 24 .07.2026 wieder montiert da Lüftungskanäle Geräte montiert werden müssen",
+    "verlegung der datenleitungen für sco-kassen, bedienerkassen, digital signage (ds) im kassenbereich, backbereich, pfandbereich, aktenraum sowie kleinverteiler durchgeführt": "Verlegung der Datenleitungen für SCO-Kassen, Bedienerkassen, Digital Signage (DS) im Kassenbereich, Backbereich, Pfandbereich, Aktenraum sowie Kleinverteiler durchgeführt.",
+    "überblick verschafft von noch durchzuführenden arbeiten. keine kassentische vorhanden und kein kabelweg in diesem bereich. flexpos ansprechpartner nicht erreicht .2 mateco hebebühnen vorhanden welche benutzt werden kann. begonnen nws 3 zu verkabeln und mit checks bestückt , zusätzliches patchfeld von unten nach oben eingebracht. begonnen nws2 fertig zu verkabeln, dazu mussten die provisorien entfernt werden": "Überblick über die noch durchzuführenden Arbeiten verschafft.\nEs waren keine Kassentische vorhanden und in diesem Bereich kein Kabelweg vorhanden.\nDer Ansprechpartner von FlexPos konnte nicht erreicht werden.\nEs waren zwei Mateco-Hebebühnen vorhanden, von denen eine genutzt werden konnte.\nBegonnen, Netzwerkschrank (NWS) 3 zu verkabeln und mit Keystone-Modulen zu bestücken. Zusätzlich wurde ein Patchfeld von unten nach oben eingebracht.\nBegonnen, Netzwerkschrank (NWS) 2 fertig zu verkabeln. Hierfür mussten die Provisorien entfernt werden.",
+    "übermittlung der seriennummern der access points (ap) zu betankung": "Seriennummern der Access Points (AP) zur Betankung übermittelt."
   },
   "behinderungen": {
     "2 techniker 1 stunde um nws in die filiale zu einzubringen": "Einbringen der Netzwerkschränke (NWS) in die Filiale.\nAVL: 2 Techniker, jeweils 1 Stunde.",
     "26 h avl wartezeit auf sdp lieferung bis 20.20 uhr, lieferung ist nicht gekommen": "Wartezeit auf die Lieferung des SDP bis 20:20 Uhr. Die Lieferung ist nicht erfolgt.\nAVL: 26 Techniker, jeweils 1 Stunde.",
     "ab mittag konnte ich erst mit serverschränk 1 beginnen da die steigetrasse erst vorhanden war": "Ab Mittag konnten die Arbeiten an den Netzwerkschränken (NWS) begonnen werden, da die Steigetrasse erst ab diesem Zeitpunkt vorhanden war.",
+    "aufgrund von fehlenden kabelwegen sowie kassentischen können keine weiteren arbeiten in diesem bereich durchgeführt werden": "Aufgrund fehlender Kabelwege sowie Kassentische konnten keine weiteren Arbeiten in diesem Bereich durchgeführt werden.",
     "durch den aktuellen baufortschritt, immer noch fehlende endausbauten der kabelwege sind beschleunigungsmaßnahmen notwendig": "Aufgrund des aktuellen Baufortschritts sowie der weiterhin fehlenden Endausbauten der Kabelwege sind Beschleunigungsmaßnahmen erforderlich.",
     "erschertes arbeiten kein licht im serverraum und filiale zugestellt durch ladenbau und klempner": "Erschwerte Arbeitsbedingungen aufgrund fehlender Beleuchtung im Serverraum sowie durch den Ladenbau und Klempner zugestellte Arbeitsbereiche.",
     "erschwerten kabelzug an den kassen da trassen zu na unter den holzbindern sitzt i": "Erschwerter Kabelzug im Kassenbereich, da die Trassen zu nah unter den Holzbinder montiert waren.",
+    "erschwerter kabelzug da schon sämtliche lüftungsrohre hängen und die klimaverrohrung": "Erschwerter Kabelzug aufgrund bereits montierter Lüftungsrohre sowie der Klimaverrohrung.",
+    "erschwerter kabelzug da wieder jedes gewerk gleichzeitig da is": "Erschwerter Kabelzug, da zeitgleich mehrere Gewerke vor Ort tätig waren.\nAVL: 3 Techniker, jeweils 3 Stunden.",
     "erschwerter kabelzug durch rasterdecke": "Erschwerter Kabelzug aufgrund einer Rasterdecke.",
     "erschwertes ablängen der datenkabel da keine geeignete strecke vorhanden ist wo uns keiner über die kabel fährt, deswegen wurde nachtschicht beantragt. siehe baubehinderungsanzeige": "Erschwertes Ablängen der Datenleitungen, da keine geeignete Strecke vorhanden war, auf der die Datenleitungen ausgelegt werden konnten, ohne dass diese überfahren wurden. Aus diesem Grund wurde Nachtschicht beantragt. Die Gründe sind der Baubehinderungsanzeige zu entnehmen.",
     "erschwertes arbeiten aufgrund von fehlenden licht in den serverräumen. avl 1 techniler 4 stunden": "Erschwertes Arbeiten aufgrund fehlender Beleuchtung in den Serverräumen.\nAVL: 1 Techniker, 4 Stunden.",
+    "erschwertes arbeiten im verkaufsbereich da durch den ladenbau alles voll steht und jedes mal erst platz gemacht werden musste zum messen": "Erschwertes Arbeiten im Verkaufsbereich, da dieser durch den Ladenbau zugestellt war und für die messtechnischen Prüfungen wiederholt Platz geschaffen werden musste.",
+    "erschwertes arbeiten im verkaufsbereich fa alles zugestellt ist durch den ladenbau": "Erschwertes Arbeiten im Verkaufsbereich, da dieser durch den Ladenbau zugestellt war.",
     "erschwertes arbeiten im verkaufsbereich wegen ladenbauarbeiten": "Erschwerte Arbeitsbedingungen im Verkaufsbereich aufgrund laufender Ladenbauarbeiten.",
+    "fehlersuche mit flexpos und frederix da kunden-wlan ohne funktion war": "Fehlersuche gemeinsam mit FlexPos an der Frederix-Box durchgeführt, da das Kunden-WLAN ohne Funktion war.",
     "für die laufende woche werden wir daher ausfallzeiten für drei techniker mit jeweils 40 arbeitsstunden ( insgesamt 120h) als mehraufwendungen geltend machen": "Für die laufende Woche entstehen Ausfallzeiten von drei Technikern.\nAVL: 3 Techniker, jeweils 40 Stunden."
   },
   "vorkommnisse": {
     "außenantennen wäre eh nicht möglich gewesen kein durchbruch nach außen und der serverraum liegt inne in der filiale bis zur außenwand ca 15 bis 20m kabelweg montiert": "Die Montage der Außenantennen konnte nicht durchgeführt werden, da kein Wanddurchbruch nach außen vorhanden war. Der Serverraum befand sich im Inneren der Filiale und bis zur Außenwand waren bereits Kabelwege mit einer Länge von ca. 15 bis 20 m montiert.",
     "das kwlan konnte noch nicht inbetriebnahme genommen werden da der support laut eigener aussage auch noch keine ahnung von der neuen frederix hat": "Das KWLAN konnte noch nicht in Betrieb genommen werden, da der Support nach eigener Aussage noch keine Kenntnisse zur neuen Frederix hatte.",
+    "drucker muss noch betankt werden mit der alten und dann der neuen firmware": "Der Drucker muss noch mit der alten und anschließend mit der neuen Firmware betankt werden.",
+    "einige messungen sind rot bzw haben nicht optimale werte, das kommt durch die verlängerung diverser kabel. das problem ist bei flexpos bekannt und wurde auch bereits an lidl kommuniziert": "Einige Messungen wiesen rote beziehungsweise nicht optimale Messwerte auf. Ursache hierfür sind Verlängerungen diverser Datenleitungen. Der Sachverhalt ist FlexPos bekannt und wurde bereits an Lidl kommuniziert.",
     "es fehlt ein ap sowie min. 2 kaltgerätekabel und die tastatur und maus für das lili": "Es fehlten ein Access Point (AP), mindestens zwei Kaltgerätekabel sowie die Tastatur und die Maus für das LILI.",
+    "es mussten noch mal alle datenleitungen von sco-kasse 1 , 2 , 3 , service kasse sowie exit gate zurückgezogen werden und neu verlegt werden da sich der kabelweg für die jeweiligen bereiche verändert hat . avl 2 h 2 mann": "Alle Datenleitungen für SCO-Kassen 1 bis 3, Servicekasse sowie Exit Gate mussten aufgrund eines geänderten Kabelwegs zurückgezogen und neu verlegt werden.\nAVL: 2 Techniker, jeweils 2 Stunden.",
     "es wurden kabellängen von 95m gemessen (an flexpos weiter gemeldet)": "Es wurden Kabellängen von 95 m gemessen und an FlexPos weitergemeldet.",
     "hebebühnen können nicht rausgefahren werden da der eingangsbereich noch nicht fertig ist": "Die Hebebühnen konnten nicht aus der Filiale gefahren werden, da der Eingangsbereich noch nicht fertiggestellt war.",
     "klärung elektriker wegen pze und headsetkanal und xweb": "Organisatorische Abstimmung mit dem Elektriker bezüglich PZE, Headsetkanal sowie XWEB durchgeführt.",
     "nach rücksprache mit lidl bauleitung sollen wir auf das dach von rossmann klettern um die außenantennen zu montieren": "Nach Rücksprache mit der Lidl Bauleitung sollen die Außenantennen durch Betreten des Dachs von Rossmann montiert werden.",
+    "pze kann nicht montiert werden da noch eine tür im flur zum pfand verbaut wird (evtl dose versetzen)": "Die Montage der PZE konnte nicht durchgeführt werden, da im Flur zum Pfandbereich noch eine Tür eingebaut wird. Gegebenenfalls muss die Datendose versetzt werden.",
     "weiterhin kein strom in der filiale": "Weiterhin kein Strom in der Filiale."
   }
 };

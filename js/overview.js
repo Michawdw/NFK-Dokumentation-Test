@@ -24,19 +24,21 @@ const Overview = (() => {
     });
   }
 
-  // Baut HTML für die Übersicht: nach Ober/Unter gruppiert, offen zuerst markiert.
+  // Baut HTML für die Übersicht: nach Ober/Unter gruppiert. Aufgelistet werden nur noch die
+  // offenen Positionen (v84.10) – Erledigtes und „nicht benötigt“ stehen nur als Zahl oben.
   function buildHtml(enriched) {
     // Geskippte („nicht benötigt") Positionen zählen nicht als offen/erledigt.
     const offen = enriched.filter((n) => !n.skipped && !n.done);
     const erledigt = enriched.filter((n) => !n.skipped && n.done);
     const nichtBenoetigt = enriched.filter((n) => n.skipped);
 
-    const grp = Structure.groupForDisplay(enriched);
+    const grp = Structure.groupForDisplay(offen);
     let html = `<div class="ov-summary">
         <span class="ov-pill open">${offen.length} offen</span>
         <span class="ov-pill done">${erledigt.length} erledigt</span>
         ${nichtBenoetigt.length ? `<span class="ov-pill skip">${nichtBenoetigt.length} nicht benötigt</span>` : ''}
       </div>`;
+    if (!offen.length) html += `<p class="ov-fertig">${Icon('check')} Alle benötigten Bilder sind erledigt.</p>`;
 
     for (const [ober, unterMap] of grp) {
       html += `<div class="ov-ober">${esc(ober)}</div>`;
