@@ -4,6 +4,15 @@
    - Startseite: gespeicherte Stammdaten als kompakte Karte, Formular erst über „Bearbeiten".
    Aufgerufen wird UI.aktualisieren(job) aus App.renderSperre() – das läuft beim Laden der
    Startseite, nach dem Speichern der Stammdaten und bei jedem Auftragswechsel. */
+// Bewegung (ab v84.13): Kurven und Dauern für Animationen aus JavaScript. Müssen zu den
+// Tokens in css/styles.css (:root) passen: --ease, --ease-drawer, --dur-ui, --dur-fast.
+const Bewegung = Object.freeze({
+  EASE_OUT: 'cubic-bezier(0.23, 1, 0.32, 1)',      // = --ease
+  EASE_DRAWER: 'cubic-bezier(0.32, 0.72, 0, 1)',   // = --ease-drawer
+  DUR: 200,                                        // = --dur-ui
+  DUR_FAST: 150,                                   // = --dur-fast
+});
+
 const UI = (() => {
   const $ = (s) => document.querySelector(s);
   const KEY = 'nfk-theme';

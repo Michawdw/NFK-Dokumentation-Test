@@ -12,8 +12,8 @@
    - „Bewegung reduzieren": keine Wege, nur kurze Überblendungen. */
 const Sheet = (() => {
   const reduce = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
-  const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
-  const EASE_DRAWER = 'cubic-bezier(0.32, 0.72, 0, 1)';
+  const EASE_OUT = Bewegung.EASE_OUT;
+  const EASE_DRAWER = Bewegung.EASE_DRAWER;
   const DUR_AUF = 260, DUR_ZU = 200, DUR_FADE = 150;
   const kannAnimieren = (el) => el && typeof el.animate === 'function';
 

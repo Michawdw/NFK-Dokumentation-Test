@@ -11,7 +11,7 @@
    - „Bewegung reduzieren": kein Fliegen, kein Federn – kurze Überblendungen. */
 const Fotoansicht = (() => {
   const reduce = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
-  const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';   // = --ease in styles.css
+  const EASE_OUT = Bewegung.EASE_OUT;                // = --ease in styles.css
   const LUECKE = 16;              // Abstand zwischen zwei Bildern beim Blättern
   const ZOOM_MAX = 4, ZOOM_DOPPEL = 2.5;
 

@@ -102,8 +102,8 @@ const App = (() => {
   // „Bewegung reduzieren" eingestellt hat, bekommt alles sofort und ohne Animation.
   const reduceMotion = window.matchMedia
     ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
-  const DUR = 200, DUR_FAST = 150;
-  const EASE = 'cubic-bezier(0.23, 1, 0.32, 1)';   // = --ease in styles.css
+  const DUR = Bewegung.DUR, DUR_FAST = Bewegung.DUR_FAST;
+  const EASE = Bewegung.EASE_OUT;                  // = --ease in styles.css
   // Scroll-Verhalten: weich, außer bei „Bewegung reduzieren“.
   const sanft = () => (reduceMotion.matches ? 'auto' : 'smooth');
   const ohneAnimation = (el) => !el || reduceMotion.matches || typeof el.animate !== 'function';
@@ -1830,6 +1830,7 @@ const App = (() => {
       diaryEinsatz = 1;
       diaryDatumAutomatisch = (diaryDate === Datum.heute());
       await loadDiaryForDate(diaryDate, 1);
+      formularWechselZeigen();
       await renderDiaryArchive();
     };
     if (!diaryAutoSaveAktiv) {            // Listener nur einmal registrieren
@@ -1876,6 +1877,7 @@ const App = (() => {
         diaryDatumAutomatisch = (diaryDate === Datum.heute());
         $('#diaryForm').datum.value = day.datum;
         await loadDiaryForDate(day.datum, day.einsatz);
+        formularWechselZeigen();
         await renderDiaryArchive();
         window.scrollTo(0, 0);
         toast(titel + ' geladen – bearbeitbar');
@@ -1939,11 +1941,22 @@ const App = (() => {
     };
   }
 
+  // Neuer Tag/Einsatz geladen: Formular kurz aufblenden, damit der Wechsel sichtbar ist
+  // (ab v84.13). Nur Deckkraft – auch bei „Bewegung reduzieren“ in Ordnung.
+  function formularWechselZeigen() {
+    const f = $('#diaryForm');
+    if (!f || typeof f.animate !== 'function') return;
+    f.getAnimations().forEach((a) => a.cancel());   // schnelles Umschalten: neu von 40 % aus
+    f.animate([{ opacity: 0.4 }, { opacity: 1 }],
+      { duration: DUR_FAST, easing: reduceMotion.matches ? 'ease' : EASE });
+  }
+
   async function wechsleEinsatz(n) {
     if (n === diaryEinsatz) return;
     await flushDiary();                 // offenen Einsatz sichern, bevor umgeschaltet wird
     diaryEinsatz = n;
     await loadDiaryForDate(diaryDate, n);
+    formularWechselZeigen();
     await renderDiaryArchive();
     if (n === 2) toast('2. Einsatz: eigenes Bautagebuch für denselben Tag');
   }
@@ -2493,7 +2506,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v84.12'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
+  const APP_VERSION = 'v84.13'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
