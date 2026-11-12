@@ -35,12 +35,20 @@ const App = (() => {
       weitereOffen = false;
       renderJobList();
     }
+    // Von der Startseite aus: Lage der angetippten Kachel merken, solange sie noch sichtbar ist
+    // (die neue Seite wächst dann genau aus ihr heraus, v84.19).
+    const kachelVor = (vorher === 'view-start' && viewId !== 'view-start')
+      ? kachelRect(viewId) : null;
     aktiveView = viewId;
     $$('.view').forEach((v) => v.classList.toggle('active', v.id === viewId));
-    if (vorher !== viewId) animiereView($('#' + viewId), zurueck || viewId === 'view-start');
     $('#topTitle').textContent = viewTitles[viewId] || 'NFK Doku';
     $('#backBtn').hidden = (viewId === 'view-start');
     window.scrollTo(0, 0);
+    if (vorher !== viewId) {
+      // Zurück zur Startseite: die Kachel des verlassenen Bereichs ist jetzt wieder sichtbar.
+      const kachel = kachelVor || (viewId === 'view-start' ? kachelRect(vorher) : null);
+      animiereView($('#' + viewId), zurueck || viewId === 'view-start', kachel);
+    }
     if (viewId === 'view-start') { renderVpStatus(); renderBackupReminder('#backupReminderStart'); }
     if (viewId === 'view-vorpruefung') Vorpruefung.enter();
     if (viewId === 'view-bilddoku') enterBilddoku();
@@ -49,8 +57,37 @@ const App = (() => {
     if (viewId === 'view-wochenbericht') Wochenbericht.enter();
   }
 
-  function animiereView(view, zurueck) {
+  // Kachel auf der Startseite, die zu einem Bereich führt (data-go), als Bildschirm-Rechteck.
+  function kachelRect(viewId) {
+    const k = $('#view-start .bigbtn[data-go="' + viewId + '"]');
+    if (!k || !k.offsetParent) return null;
+    const r = k.getBoundingClientRect();
+    return r.width ? r : null;
+  }
+
+  // Seitenwechsel. Mit Kachel (Start <-> Bereich, v84.19): die neue Seite blendet ein und wächst
+  // dabei minimal aus der angetippten Kachel (96 -> 100 %); zurück wird die Startseite leicht zur
+  // Kachel hin kleiner (104 -> 100 %). Nur transform + opacity einer Ebene, 180 ms. Ohne Kachel
+  // (Umleitung, Unterseiten) bleibt das seitliche Gleiten aus styles.css.
+  function animiereView(view, zurueck, kachel) {
     if (!view) return;               // bei „Bewegung reduzieren“ macht CSS daraus eine Überblendung
+    if (view.getAnimations) view.getAnimations().forEach((a) => { if (a.id === 'kachel') a.cancel(); });
+    if (kachel && !reduceMotion.matches && typeof view.animate === 'function') {
+      view.classList.remove('enter-fwd', 'enter-back', 'view-start-anim');
+      clearTimeout(view._animEnde);
+      const vr = view.getBoundingClientRect();
+      const ox = kachel.left + kachel.width / 2 - vr.left;
+      const oy = kachel.top + kachel.height / 2 - vr.top;
+      view.style.transformOrigin = Math.round(ox) + 'px ' + Math.round(oy) + 'px';
+      const a = view.animate([
+        { opacity: 0, transform: zurueck ? 'scale(1.04)' : 'scale(.96)' },
+        { opacity: 1, transform: 'none' },
+      ], { duration: 180, easing: Bewegung.EASE_OUT, id: 'kachel' });
+      beiEnde(a, 180, () => {
+        if (!view.getAnimations().some((x) => x.id === 'kachel')) view.style.transformOrigin = '';
+      });
+      return;
+    }
     view.classList.remove('enter-fwd', 'enter-back', 'view-start-anim');
     void view.offsetWidth;            // Animation auch bei schnellem Hin und Her neu starten
     view.classList.add(zurueck ? 'enter-back' : 'enter-fwd');
@@ -2530,7 +2567,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v84.18'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
+  const APP_VERSION = 'v84.19'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
