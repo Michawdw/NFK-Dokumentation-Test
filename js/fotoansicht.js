@@ -11,6 +11,7 @@
    - „Bewegung reduzieren": kein Fliegen, kein Federn – kurze Überblendungen. */
 const Fotoansicht = (() => {
   const reduce = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+  const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';   // = --ease in styles.css
   const LUECKE = 16;              // Abstand zwischen zwei Bildern beim Blättern
   const ZOOM_MAX = 4, ZOOM_DOPPEL = 2.5;
 
@@ -139,7 +140,7 @@ const Fotoansicht = (() => {
     const p = aktuellePose();
     setzePose(cur(), p);
     hg.style.opacity = String(p.bg);
-    ov.style.setProperty('--pv-l', String(Math.max(0, Math.min(1, (p.bg - 0.5) * 2))));
+    leistenDeckkraft(Math.max(0, Math.min(1, (p.bg - 0.5) * 2)));
   }
 
   // ------------------------------------------------------------------ Bilder belegen
@@ -178,6 +179,21 @@ const Fotoansicht = (() => {
   }
 
   // ------------------------------------------------------------------ Leisten
+  // Beim Ziehen/Öffnen/Schließen folgt die Deckkraft der Leisten dem Bild – direkt an den
+  // zwei Leisten gesetzt (nicht als Variable am ganzen Fenster, das zwang den Browser, alles
+  // darunter neu zu berechnen) und ohne die 150-ms-Überblendung, die dem Finger nachhinkte.
+  // Die Überblendung bleibt nur für das Ein-/Ausblenden per Tippen (v84.12).
+  let leistenEls = [];
+  let leistenWert = 1;
+  function leistenDeckkraft(w) {
+    w = Math.round(w * 100) / 100;
+    if (w === leistenWert) return;
+    leistenWert = w;
+    leistenEls.forEach((el) => {
+      el.style.transition = w < 1 ? 'none' : '';
+      el.style.setProperty('--pv-l', String(w));
+    });
+  }
   function leistenSetzen(an) {
     leisten = an;
     ov.classList.toggle('pv-ohne-leisten', !an);
@@ -237,7 +253,7 @@ const Fotoansicht = (() => {
     const tp = thumbPose(o.liste[index], cur().g);
     if (reduce.matches || !tp) {
       zeichnen();
-      if (typeof ov.animate === 'function') ov.animate([{ opacity: 0 }, { opacity: 1 }], { duration: reduce.matches ? 150 : 200, easing: 'ease' });
+      if (typeof ov.animate === 'function') ov.animate([{ opacity: 0 }, { opacity: 1 }], { duration: reduce.matches ? 150 : 200, easing: reduce.matches ? 'ease' : EASE_OUT });
       return;
     }
     flip = { a: tp, b: normalPose(), p: 0 };
@@ -272,7 +288,7 @@ const Fotoansicht = (() => {
       };
       if (reduce.matches || !a || typeof ov.animate !== 'function') {
         if (typeof ov.animate === 'function') {
-          const an = ov.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 150, easing: 'ease', fill: 'forwards' });
+          const an = ov.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 150, easing: reduce.matches ? 'ease' : EASE_OUT, fill: 'forwards' });
           an.onfinish = () => { an.cancel(); ende(); };
           setTimeout(ende, 400);
         } else ende();
@@ -506,6 +522,7 @@ const Fotoansicht = (() => {
     eingerichtet = true;
     ov = document.getElementById('photoOverlay');
     hg = ov.querySelector('.pv-hg');
+    leistenEls = [...ov.querySelectorAll('.pv-leiste')];
     buehne = ov.querySelector('.pv-buehne');
     folien = [...buehne.querySelectorAll('.pv-folie')].map((el) => ({ el, img: el.querySelector('img'), g: null }));
     if (window.PointerEvent) {

@@ -411,7 +411,7 @@ fieldset.techs legend { font-weight: 600; padding: 0 var(--sp-1h); }
 .btn:active { transform: scale(.98); background-color: var(--surface-2); }
 .btn.primary:active { background-color: var(--brand-hover); }
 .btn.danger:active { filter: brightness(.94); }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .btn:hover { background-color: var(--surface-2); }
   .btn.primary:hover { background-color: var(--brand-hover); border-color: var(--brand-hover); }
   .btn.danger:hover { filter: brightness(.96); }
@@ -548,7 +548,7 @@ fieldset.techs legend { font-weight: 600; padding: 0 var(--sp-1h); }
 .bigbtn.danger { border-color: var(--danger-border); }
 .bigbtn.danger .bigbtn-title { color: var(--danger); }
 .bigbtn.danger .bigbtn-emoji { background: var(--danger-subtle); color: var(--danger); }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .bigbtn:hover { border-color: var(--border-strong); background: var(--surface); }
   #view-start .bigbtn:hover::after { transform: translateX(2px); }
 }
@@ -879,7 +879,7 @@ fieldset.techs legend { font-weight: 600; padding: 0 var(--sp-1h); }
 .pv-leiste {
   position: absolute; left: 0; right: 0; z-index: 1;
   display: flex; align-items: center; gap: var(--sp-2); pointer-events: none;
-  opacity: var(--pv-l, 1); transition: opacity 150ms ease;
+  opacity: var(--pv-l, 1); transition: opacity 150ms var(--ease);
 }
 .pv-leiste > * { pointer-events: auto; }
 .pv-oben {
@@ -907,7 +907,7 @@ fieldset.techs legend { font-weight: 600; padding: 0 var(--sp-1h); }
   transition: transform var(--dur-fast) var(--ease), background-color var(--dur-fast);
 }
 .pv-knopf .i { width: 1.25rem; height: 1.25rem; }
-.pv-knopf:active { transform: scale(.94); background: rgba(255, 255, 255, .24); }
+.pv-knopf:active { transform: scale(.96); background: rgba(255, 255, 255, .24); }
 .pv-loeschen { padding: 0 1.125rem; color: #ff9a92; }
 /* ---------- Übersicht (Modal) ---------- */
 .ov-summary { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-3); }
@@ -950,7 +950,7 @@ fieldset.techs legend { font-weight: 600; padding: 0 var(--sp-1h); }
   background: transparent; color: var(--text-2); border-radius: var(--radius); font-size: var(--fs-15);
   font-weight: 600; cursor: pointer;
 }
-@media (hover: hover) { .vp-seg .vp-opt:not(.active):not(:disabled):hover { background: var(--surface); color: var(--text); } }
+@media (hover: hover) and (pointer: fine) { .vp-seg .vp-opt:not(.active):not(:disabled):hover { background: var(--surface); color: var(--text); } }
 .vp-seg .vp-opt.active.ok { background: var(--success-solid); border-color: var(--success-solid); color: #fff; box-shadow: var(--shadow-xs); }
 .vp-seg .vp-opt.active.warn { background: var(--danger-solid); border-color: var(--danger-solid); color: #fff; box-shadow: var(--shadow-xs); }
 .vp-seg .vp-opt.active.neutral { background: var(--brand); border-color: var(--brand); color: var(--on-brand); box-shadow: var(--shadow-xs); }
@@ -1174,11 +1174,11 @@ textarea.wb-notiztext { min-height: 4.125rem; }
 .job-more:active, .diary-arch-item:active { transform: scale(.985); }
 .vp-seg .vp-opt:active, .cam-btn:active, .gal-btn:active, .skip-btn:active,
 .del-btn:active, .icon-btn:active, .job-edit:active, .job-del:active, .da-del:active, .dr-del:active,
-.modal-x:active, .namen-del:active { transform: scale(.94); }
+.modal-x:active, .namen-del:active { transform: scale(.96); }
 /* Kein Schrumpfen der Kopfzeile, wenn eigentlich ein Knopf darin gedrückt wird. */
 .tree-ober:has(button:active), .tree-unter:has(button:active),
 .job-item:has(button:active), .diary-arch-item:has(button:active) { transform: none; }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .tree-ober:not(.open):hover, .tree-unter:not(.open):hover, .wb-sec:not(.open):hover, .wb-sub:not(.open):hover,
   .job-item:not(.active):hover, .diary-arch-item:not(.active):hover { border-color: var(--border-strong); }
   .job-more:hover { background: var(--surface); color: var(--text); }
@@ -1206,7 +1206,7 @@ textarea.wb-notiztext { min-height: 4.125rem; }
   content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
   background: var(--brand-fg); opacity: .55; transform-origin: left center;
   transform: scaleX(var(--p, 0));
-  transition: transform 400ms var(--ease), background-color var(--dur);
+  transition: transform 250ms var(--ease), background-color var(--dur);
 }
 .tree-ober.alldone::after, .tree-unter.alldone::after, .wb-sec.done::after, .wb-sub.fertig::after { background: var(--success-solid); opacity: .8; }
 .tree-ober.skipped::after, .tree-unter.skipped::after { display: none; }
@@ -1245,7 +1245,7 @@ textarea.wb-notiztext { min-height: 4.125rem; }
 .toast.zeigen { opacity: 1; transform: translate(-50%, 0); }
 .saved:not([hidden]) { display: inline-flex; animation: pop 200ms var(--ease); }
 .pop { animation: pop 200ms var(--ease); }
-@keyframes pop { from { transform: scale(.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes pop { from { transform: scale(.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 .grp-check, .row-check { display: inline-flex; }
 /* Eigener Name gerade angelegt: kurz hervorheben, damit man ihn in der Liste findet */
 .name-row.neu-angelegt { animation: neu-angelegt 2400ms var(--ease); }
@@ -1256,7 +1256,9 @@ textarea.wb-notiztext { min-height: 4.125rem; }
 #modalBody input.invalid { border-color: var(--danger); background: var(--danger-subtle); }
 
 /* ---------- Namensliste ---------- */
-.namen-liste:not([hidden]) { animation: fade-in var(--dur-fast) var(--ease); }
+/* Klappt vom Eingabefeld aus nach unten auf: kurz einblenden und 4 px nachrutschen (v84.12). */
+.namen-liste:not([hidden]) { animation: liste-in var(--dur-fast) var(--ease); }
+@keyframes liste-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 
 /* ---------- Lade-Anzeige an Knöpfen ---------- */
 .btn.is-busy { position: relative; opacity: .85; cursor: progress; pointer-events: none; }
@@ -1280,7 +1282,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
   .view.enter-fwd, .view.enter-back { animation: fade-in 150ms ease; }
   .view-start-anim .bigchoice .bigbtn { animation: fade-in 150ms ease both; animation-delay: 0ms; }
   .toast { transform: translate(-50%, 0); transition: opacity 150ms ease; }
-  .saved:not([hidden]), .pop { animation: fade-in 150ms ease; }
+  .saved:not([hidden]), .pop, .namen-liste:not([hidden]) { animation: fade-in 150ms ease; }
   .name-row.neu-angelegt { animation-duration: 2400ms; }
   /* Druck-Rückmeldung über die Fläche statt über Schrumpfen */
   .btn:active, .bigbtn:active, .job-item:active, .tree-ober:active, .tree-unter:active, .wb-sec:active,

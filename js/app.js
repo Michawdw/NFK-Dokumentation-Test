@@ -54,10 +54,18 @@ const App = (() => {
     view.classList.remove('enter-fwd', 'enter-back', 'view-start-anim');
     void view.offsetWidth;            // Animation auch bei schnellem Hin und Her neu starten
     view.classList.add(zurueck ? 'enter-back' : 'enter-fwd');
-    // Startseite: Funktionskacheln nacheinander einblenden.
-    if (view.id === 'view-start') view.classList.add('view-start-anim');
+    // Die Funktionskacheln blenden nur beim App-Start nacheinander ein (kachelnEinblenden),
+    // nicht bei jeder Rückkehr zur Startseite – das sieht man viele Male am Tag (v84.12).
     clearTimeout(view._animEnde);
     view._animEnde = setTimeout(() => view.classList.remove('enter-fwd', 'enter-back', 'view-start-anim'), 700);
+  }
+
+  // Startseite beim App-Start: Funktionskacheln einmal nacheinander einblenden.
+  function kachelnEinblenden() {
+    const view = $('#view-start');
+    if (!view) return;
+    view.classList.add('view-start-anim');
+    setTimeout(() => view.classList.remove('view-start-anim'), 700);
   }
 
   // Zugang zu Bilddoku/Bautagebuch erst, wenn die Vorprüfung des Auftrags vollständig
@@ -110,7 +118,16 @@ const App = (() => {
     return Math.min(h, Math.max(120, rest));
   }
 
-  // Aufklappen: Höhe 0 → natürliche Höhe. Das Element steht bereits fertig im DOM.
+  // Kleinste Höhe ohne Inhalt: Innenabstand + Rahmen (box-sizing: border-box). Bis dahin wird
+  // geklappt – Innenabstand und Rahmen werden nicht mitanimiert, so muss der Browser je Bild
+  // eine Eigenschaft weniger durchrechnen (v84.12). Der Sprung von wenigen Pixeln fällt bei
+  // Deckkraft 0 nicht auf.
+  function leerHoehe(cs) {
+    return ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth']
+      .reduce((n, k) => n + (parseFloat(cs[k]) || 0), 0);
+  }
+
+  // Aufklappen: leere Höhe → natürliche Höhe. Das Element steht bereits fertig im DOM.
   function animOpen(el, obenBei) {
     // „Bewegung reduzieren": keine Höhen-Bewegung, nur kurz einblenden.
     if (el && reduceMotion.matches && typeof el.animate === 'function') {
@@ -121,11 +138,11 @@ const App = (() => {
     const h = el.offsetHeight;
     if (!h) return;
     const ziel = sichtbareHoehe(el, h, obenBei);
-    const cs = getComputedStyle(el);
+    const min = Math.min(leerHoehe(getComputedStyle(el)), ziel);
     el.style.overflow = 'hidden';
     const a = el.animate([
-      { height: '0px', paddingTop: '0px', paddingBottom: '0px', opacity: 0 },
-      { height: ziel + 'px', paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom, opacity: 1 },
+      { height: min + 'px', opacity: 0 },
+      { height: ziel + 'px', opacity: 1 },
     ], { duration: DUR, easing: EASE });
     beiEnde(a, DUR, () => { el.style.overflow = ''; });
   }
@@ -153,11 +170,11 @@ const App = (() => {
       const h = el.offsetHeight;
       if (!h) { resolve(); return; }
       const start = sichtbareHoehe(el, h);
-      const cs = getComputedStyle(el);
+      const min = Math.min(leerHoehe(getComputedStyle(el)), start);
       el.style.overflow = 'hidden';
       const a = el.animate([
-        { height: start + 'px', paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom, opacity: 1 },
-        { height: '0px', paddingTop: '0px', paddingBottom: '0px', opacity: 0 },
+        { height: start + 'px', opacity: 1 },
+        { height: min + 'px', opacity: 0 },
       ], { duration: DUR_FAST + 30, easing: EASE, fill: 'forwards' });   // kein ease-in: Reaktion sofort sichtbar
       beiEnde(a, DUR_FAST + 30, resolve);
     });
@@ -2476,7 +2493,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v84.11'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
+  const APP_VERSION = 'v84.12'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
@@ -2585,6 +2602,7 @@ const App = (() => {
       window.addEventListener('online', updateNetDot);
       window.addEventListener('offline', updateNetDot);
       show('view-start');
+      kachelnEinblenden();
     } catch (e) {
       console.error('Init-Fehler (UI):', e);
     }
