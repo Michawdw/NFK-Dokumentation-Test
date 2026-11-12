@@ -343,7 +343,7 @@ h3 { font-size: var(--fs-14); font-weight: 600; color: var(--text-2); margin: va
 #fehlerSendenBtn { width: 100%; margin-top: var(--sp-1); }
 
 /* ---------- Forms ---------- */
-.form label, .grid2 label { display: block; margin: var(--sp-4) 0; font-weight: 500; font-size: var(--fs-13); color: var(--text-2); }
+.form label, .grid2 label { display: block; margin: var(--sp-5) 0; font-weight: 500; font-size: var(--fs-13); color: var(--text-2); }
 .form input, .form textarea, .grid2 input, .diary-row input {
   display: block;
   width: 100%;
@@ -371,7 +371,7 @@ input:focus, textarea:focus, select:focus {
 #projectForm .btn.primary { width: 100%; margin-top: var(--sp-1); }
 /* minmax(0,1fr) + min-width 0: Datumsfelder haben eine feste Mindestbreite und schoben
    die Seite auf schmalen Handys sonst seitlich über den Rand. */
-.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-4); }
 .grid2 input { min-width: 0; }
 .grid2 label { overflow-wrap: break-word; }   /* lange Wörter in schmaler Spalte umbrechen */
 fieldset.techs { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--sp-3); margin: var(--sp-4) 0; }
@@ -482,7 +482,7 @@ fieldset.techs legend { font-weight: 600; padding: 0 var(--sp-1h); }
 }
 .sperre-hinweis::before { -webkit-mask-image: var(--ico-lock); mask-image: var(--ico-lock); width: 1.125rem; height: 1.125rem; }
 .bigchoice.gesperrt .bigbtn { opacity: .5; }
-.job-list { display: grid; gap: var(--sp-2); margin: var(--sp-2) 0 var(--sp-1); }
+.job-list { display: grid; gap: var(--sp-2h); margin: var(--sp-2) 0 var(--sp-1); }
 .job-item {
   display: flex; align-items: center; gap: var(--sp-1);
   padding: var(--sp-2h) var(--sp-2) var(--sp-2h) var(--sp-3h); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface);
@@ -511,7 +511,7 @@ fieldset.techs legend { font-weight: 600; padding: 0 var(--sp-1h); }
 .job-more-list[hidden] { display: none; }
 
 /* ---------- Big choice (Funktionskacheln) ---------- */
-.bigchoice { display: grid; gap: var(--sp-2); margin-top: var(--sp-2); grid-template-columns: minmax(0, 1fr); }
+.bigchoice { display: grid; gap: var(--sp-3); margin-top: var(--sp-2); grid-template-columns: minmax(0, 1fr); }
 .bigbtn {
   display: flex;
   flex-direction: row;
@@ -826,6 +826,13 @@ fieldset.techs legend { font-weight: 600; padding: 0 var(--sp-1h); }
 .modal-overlay {
   position: fixed; inset: 0; background: var(--scrim); display: flex; align-items: flex-end; justify-content: center; z-index: 50;
 }
+/* Seite hinter Dialogen weichzeichnen (v84.16). Fester Radius, nur die Deckkraft läuft – im
+   Gleichschritt mit der Abdunkelung, auch beim Wischen (js/sheet.js). pointer-events: none,
+   damit „Tippen daneben = Abbrechen“ weiter das Overlay selbst trifft. */
+.modal-blur {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
 .modal {
   background: var(--surface); color: var(--text); width: 100%; max-width: 35rem;
   border-radius: var(--radius-xl) var(--radius-xl) 0 0; padding: var(--sp-5); max-height: 90vh; overflow: auto;
@@ -839,6 +846,10 @@ fieldset.techs legend { font-weight: 600; padding: 0 var(--sp-1h); }
   display: flex; align-items: flex-start; gap: var(--sp-2h);
   margin: calc(-1 * var(--sp-5)) calc(-1 * var(--sp-5)) var(--sp-1); padding: var(--sp-6) var(--sp-5) var(--sp-3);
   background: var(--surface); border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  /* Glas wie die Kopfleiste (v84.15): sichtbar, wenn langer Inhalt darunter durchscrollt.
+     --topbar-bg = 86 % der Kartenfarbe, hell wie dunkel. */
+  background: var(--topbar-bg);
+  -webkit-backdrop-filter: saturate(1.6) blur(14px); backdrop-filter: saturate(1.6) blur(14px);
 }
 /* Griff-Leiste wie bei nativen Sheets */
 .modal-head::before {
@@ -1232,7 +1243,7 @@ textarea.wb-notiztext { min-height: 4.125rem; }
 .modal-head { touch-action: none; cursor: grab; }
 .modal-head:active { cursor: grabbing; }
 .modal-head button { cursor: pointer; }
-.modal { will-change: transform; }
+.modal { will-change: transform; position: relative; z-index: 1; }   /* über der Blur-Ebene */
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 
 /* ---------- Toast & „gespeichert" ---------- */
@@ -1390,14 +1401,20 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .theme-btn { margin-left: 0; color: var(--text-2); }
 .theme-btn .i { width: 1.25rem; height: 1.25rem; }
 
-/* ---------- Überschriften: Seite groß, Abschnitte als kleine Überzeile ---------- */
+/* ---------- Überschriften: klare Stufen (v84.15) ----------
+   Seitentitel 26 · Abschnitt (h2) 17 · Unterabschnitt (h3) 15 · Text 16 · Hinweis 14 grau.
+   Bis v84.14 waren Abschnitte kleine graue Überzeilen (12 px) – kleiner als jeder Hinweistext. */
 .jobs-head h2 { font-size: var(--fs-26); font-weight: 700; letter-spacing: -.025em; line-height: 1.2; }
 .jobs-head { margin: var(--sp-2) 0 var(--sp-3); row-gap: var(--sp-3); }
-main h2:not(.jobs-head h2), main h3 {
-  font-size: var(--fs-12); font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
-  color: var(--muted); margin: var(--sp-9) 0 var(--sp-2h);
+main h2:not(.jobs-head h2) {
+  font-size: var(--fs-17); font-weight: 650; letter-spacing: -.01em; line-height: 1.3;
+  color: var(--text); margin: var(--sp-8) 0 var(--sp-2h);
 }
-main h2 .sub-current { text-transform: none; letter-spacing: 0; font-weight: 500; }
+main h3 {
+  font-size: var(--fs-15); font-weight: 600; letter-spacing: 0; line-height: 1.35;
+  color: var(--text-2); margin: var(--sp-6) 0 var(--sp-2);
+}
+main h2 .sub-current { font-weight: 500; color: var(--muted); }
 .arch-head { margin-top: var(--sp-2); }
 main .wb-kopf h3, main .vp-item h3 { margin-top: 0; }
 .bh-photoblock h3 { margin-top: var(--sp-5); }
@@ -1407,7 +1424,7 @@ main .wb-kopf h3, main .vp-item h3 { margin-top: 0; }
 .stamm-karte {
   display: flex; align-items: center; gap: var(--sp-3);
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
-  padding: var(--sp-3h) var(--sp-3) var(--sp-3h) var(--sp-4); box-shadow: var(--shadow-xs); margin-bottom: var(--sp-3);
+  padding: var(--sp-4); box-shadow: var(--shadow-xs); margin-bottom: var(--sp-3);
 }
 .sk-main { flex: 1; min-width: 0; }
 .sk-titel { font-size: var(--fs-17); font-weight: 650; letter-spacing: -.01em; overflow-wrap: anywhere; }
@@ -1460,6 +1477,8 @@ main .wb-kopf h3, main .vp-item h3 { margin-top: 0; }
   .pv-knopf { -webkit-backdrop-filter: none; backdrop-filter: none; background: #2a2a2a; }
   .pv-oben, .pv-unten { background: rgba(0, 0, 0, .92); }
   .modal-overlay { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .modal-blur { display: none; }
+  .modal-head { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 
 /* ---------- „Kontrast erhöhen" ----------
@@ -1522,6 +1541,8 @@ main .wb-kopf h3, main .vp-item h3 { margin-top: 0; }
   input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
   /* Keine durchscheinenden Flächen */
   .topbar { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .modal-blur { display: none; }
+  .modal-head { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
   .pv-knopf { -webkit-backdrop-filter: none; backdrop-filter: none; background: #2a2a2a; }
   .pv-oben, .pv-unten { background: rgba(0, 0, 0, .92); }
   .photo-sub, .pv-zaehler { color: #fff; }

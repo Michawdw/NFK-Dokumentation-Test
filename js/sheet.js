@@ -18,6 +18,15 @@ const Sheet = (() => {
   const kannAnimieren = (el) => el && typeof el.animate === 'function';
 
   const panelVon = (o) => o.querySelector('.modal, .photo-box');
+  // Weichzeichner hinter dem Dialog (v84.16): seine Deckkraft läuft immer mit dem Anteil der
+  // Abdunkelung (0 = zu, 1 = offen). Fehlt die Ebene, passiert nichts.
+  const blurVon = (o) => o.querySelector('.modal-blur');
+  function blurAnimieren(o, von, nach, opt) {
+    const b = blurVon(o);
+    if (!b || !kannAnimieren(b)) return null;
+    b.style.opacity = String(nach);              // Endwert bleibt stehen, die Animation läuft darüber
+    return b.animate([{ opacity: von }, { opacity: nach }], opt);
+  }
   const istSheet = (p) => p && p.classList.contains('modal');
 
   // Abdunklung: Farbe aus dem CSS (Token --scrim) lesen und nur die Deckkraft skalieren.
@@ -43,8 +52,11 @@ const Sheet = (() => {
       const m = tf.match(/matrix\(([^)]+)\)/);
       if (m) { const v = m[1].split(',').map(parseFloat); scale = v[0]; y = v[5]; }
     }
-    const stand = { y, scale, opacity: parseFloat(csP.opacity), bg: csO.backgroundColor };
-    [o, p].forEach((el) => el.getAnimations && el.getAnimations().forEach((a) => a.cancel()));
+    const b = blurVon(o);
+    const stand = { y, scale, opacity: parseFloat(csP.opacity), bg: csO.backgroundColor,
+      blur: b ? parseFloat(getComputedStyle(b).opacity) : 0 };
+    [o, p, b].forEach((el) => el && el.getAnimations && el.getAnimations().forEach((a) => a.cancel()));
+    if (b) b.style.opacity = String(stand.blur);
     p.style.transform = `translateY(${y}px) scale(${scale})`;
     p.style.opacity = String(stand.opacity);
     o.style.backgroundColor = stand.bg;
@@ -80,7 +92,7 @@ const Sheet = (() => {
     if (warVersteckt) o._scrim = null;      // Farbe neu lesen (Hell/Dunkel kann gewechselt haben)
     // Frisch geöffnet: von „ganz zu" aus. Noch im Schließen: vom aktuellen Stand aus.
     const von = warVersteckt
-      ? { y: reduce.matches ? 0 : (sheet ? h : 0), scale: sheet || reduce.matches ? 1 : 0.97, opacity: sheet && !reduce.matches ? 1 : 0, bg: scrimFarbe(o, 0) }
+      ? { y: reduce.matches ? 0 : (sheet ? h : 0), scale: sheet || reduce.matches ? 1 : 0.97, opacity: sheet && !reduce.matches ? 1 : 0, bg: scrimFarbe(o, 0), blur: 0 }
       : einfrieren(o);
     const dauer = reduce.matches ? DUR_FADE : DUR_AUF;
     const kurve = reduce.matches ? 'ease' : (sheet ? EASE_DRAWER : EASE_OUT);
@@ -89,11 +101,12 @@ const Sheet = (() => {
       { transform: `translateY(${von.y}px) scale(${von.scale})`, opacity: von.opacity },
       { transform: 'translateY(0px) scale(1)', opacity: 1 },
     ], { duration: dauer, easing: kurve });
+    const bl = blurAnimieren(o, von.blur, 1, { duration: dauer, easing: kurve });
     aufraeumen(o);
     // Sicherheitsnetz: Im Hintergrund bleiben Animationen stehen – dann stünde das Sheet
     // unsichtbar am Startpunkt. Spätestens kurz nach der Dauer in den Endzustand.
-    setTimeout(() => [s, a].forEach((x) => {
-      if (x.playState === 'running') { try { x.finish(); } catch (e) { /* egal */ } }
+    setTimeout(() => [s, a, bl].forEach((x) => {
+      if (x && x.playState === 'running') { try { x.finish(); } catch (e) { /* egal */ } }
     }), dauer + 200);
   }
 
@@ -115,6 +128,7 @@ const Sheet = (() => {
       { transform: `translateY(${von.y}px) scale(${von.scale})`, opacity: von.opacity },
       { transform: `translateY(${nach.y}px) scale(${nach.scale})`, opacity: nach.opacity },
     ], { duration: dauer, easing: kurve, fill: 'forwards' });
+    const bl = blurAnimieren(o, von.blur, 0, { duration: dauer, easing: kurve, fill: 'forwards' });
     aufraeumen(o);
     beiEnde(a, dauer, () => {
       // Erst unsichtbar schalten, dann die festgehaltenen Endbilder lösen – sonst blitzt das
@@ -123,6 +137,7 @@ const Sheet = (() => {
       fertig();
       s.cancel();
       a.cancel();
+      if (bl) bl.cancel();
     });
   }
 
@@ -158,12 +173,14 @@ const Sheet = (() => {
     const p = o && o.querySelector('.modal');
     const griff = p && p.querySelector('.modal-head');
     if (!griff || !window.PointerEvent) return;
+    const blur = blurVon(o);
 
     let zug = null;   // { id, startY, basis, aktiv, verlauf: [{y, t}] }
     const setze = (y) => {
       const h = p.offsetHeight || 1;
       p.style.transform = `translateY(${y}px)`;
       o.style.backgroundColor = scrimFarbe(o, 1 - Math.max(0, y) / h);
+      if (blur) blur.style.opacity = String(Math.max(0, Math.min(1, 1 - Math.max(0, y) / h)));
     };
 
     griff.addEventListener('pointerdown', (e) => {
@@ -209,6 +226,7 @@ const Sheet = (() => {
         // Schließen über den ✕-Knopf: derselbe Weg wie „Abbrechen" des jeweiligen Dialogs.
         document.getElementById('modalClose').click();
       } else if (reduce.matches) {
+        setze(0);                // Weichzeichner wieder voll (Abdunkelung räumt aufraeumen auf)
         aufraeumen(o);
       } else {
         federZurueck(o, y, v, setze);
