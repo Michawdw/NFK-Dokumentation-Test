@@ -184,13 +184,37 @@ const App = (() => {
   // aktuellen Stand aus. Schließen blendet erst aus und setzt dann hidden. Öffnet
   // währenddessen schon der nächste Dialog (Rückfrage direkt nach der vorigen), kehrt die
   // Bewegung einfach um; das abgelöste Schließen meldet sich dann nicht mehr (kein hidden).
+  //
+  // Handy-Zurück-Taste bei ALLEN Dialogen (v84.17): Ein CloseWatcher fängt die Zurück-Taste
+  // (am Rechner: Esc) ab, solange ein Dialog offen ist, und löst den ✕-Knopf aus – also genau
+  // den Weg „Abbrechen“, den jeder Dialog dort hinterlegt hat. Ohne Umweg über den Verlauf: kein
+  // Wettlauf, wenn direkt nach einer Rückfrage die nächste kommt oder die Ansicht wechselt.
+  // Ältere Browser ohne CloseWatcher verhalten sich wie bisher.
+  let dialogWaechter = null;
+  function waechterAn(o) {
+    if (o.id !== 'modalOverlay' || dialogWaechter || typeof window.CloseWatcher !== 'function') return;
+    try { dialogWaechter = new window.CloseWatcher(); } catch (e) { dialogWaechter = null; return; }
+    dialogWaechter.onclose = () => {
+      dialogWaechter = null;
+      if (!o.hidden && !o._zu) $('#modalClose').click();
+    };
+  }
+  function waechterAus(o) {
+    if (o.id !== 'modalOverlay' || !dialogWaechter) return;
+    const w = dialogWaechter;
+    dialogWaechter = null;
+    w.onclose = null;
+    try { w.destroy(); } catch (e) { /* egal */ }
+  }
   function openOverlay(o) {
     const warVersteckt = o.hidden;
     o._zu = null;
     o.hidden = false;
+    waechterAn(o);
     Sheet.zeigen(o, warVersteckt);
   }
   function closeOverlay(o, danach) {
+    waechterAus(o);
     if (o.hidden) {
       if (danach) danach();
       return;
@@ -2506,7 +2530,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v84.16'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
+  const APP_VERSION = 'v84.17'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
