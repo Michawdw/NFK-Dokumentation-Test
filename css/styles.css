@@ -1546,3 +1546,87 @@ main .wb-kopf h3, main .vp-item h3 { margin-top: 0; }
   .net-dot { forced-color-adjust: none; }
   :focus-visible { outline: 3px solid Highlight; }
 }
+
+/* =====================================================================
+   Ebenen auf einen Blick (v84.9) – Ober- vs. Unterordner
+   Bis v84.8 unterschieden sich die beiden Ebenen nur durch zwei sehr ähnliche Blautöne;
+   am Handy war kaum zu sehen, was Ober- und was Unterordner ist. Jetzt trägt die Struktur
+   die Unterscheidung, nicht die Farbe allein (gilt auch ohne Farbsehen):
+   - Oberordner: Ordnersymbol; geöffnet mit kräftigem blauem Rahmen und dickem Streifen links.
+   - Inhalt eines geöffneten Ordners: eingerückt an einer durchgezogenen Linie.
+   - Unterordner: eine Stufe kleiner und flacher.
+   Gilt für die Bilddoku (.tree-*) und den Wochenbericht (.wb-sec/.wb-sub).
+   ===================================================================== */
+:root {
+  --lvl-strong: #1f4e78;      /* Rahmen/Streifen des geöffneten Oberordners */
+  --lvl1-head: #e4eef8;       /* Kopf des geöffneten Oberordners */
+  --lvl-line: #7fa3c7;        /* Linie links am Inhalt des Oberordners */
+  --lvl2-head: #f1f5fa;       /* Kopf des geöffneten Unterordners */
+  --lvl2-line: #b3c8de;       /* Linie links am Inhalt des Unterordners */
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --lvl-strong: #6b9fd4; --lvl1-head: #1c2b3d; --lvl-line: #4f77a1; --lvl2-head: #202833; --lvl2-line: #3b4f68;
+  }
+}
+:root[data-theme="dark"] {
+  --lvl-strong: #6b9fd4; --lvl1-head: #1c2b3d; --lvl-line: #4f77a1; --lvl2-head: #202833; --lvl2-line: #3b4f68;
+}
+
+/* Ordnersymbol vor dem Namen des Oberordners (zu / offen) */
+.grp-folder { flex: 0 0 auto; display: inline-flex; color: var(--lvl-strong); line-height: 1; }
+.grp-folder .i { width: 1.25rem; height: 1.25rem; }
+.grp-folder .auf, .open > .grp-folder .zu { display: none; }
+.open > .grp-folder .auf { display: inline-block; }
+.tree-ober, .wb-sec { gap: var(--sp-2); }
+.alldone > .grp-folder, .wb-sec.done > .grp-folder { color: var(--success); }
+.skipped > .grp-folder { color: var(--muted); }
+
+/* Namen: nur an Wortgrenzen bzw. nach Bindestrichen umbrechen, nicht mitten im Wort */
+.tree-ober .grp-name, .tree-unter .grp-name, .wb-sec-name, .wb-sub-name {
+  word-break: normal; overflow-wrap: break-word; hyphens: manual; line-height: 1.3;
+}
+
+/* --- Geöffneter Oberordner: eigene Karte mit kräftigem Rahmen --- */
+.tree-ober.open, .wb-sec.open:not(.missing) {
+  background: var(--lvl1-head); color: var(--text);
+  border-style: solid; border-width: 1.5px 1.5px 1.5px 5px;
+  border-top-color: var(--lvl-strong); border-right-color: var(--lvl-strong); border-bottom-color: var(--lvl-strong);
+  border-radius: var(--radius-lg); margin-bottom: 0;
+}
+/* Links der kräftige Streifen – außer bei eigenen/übernommenen Ordnern: dort bleibt die Herkunftsfarbe. */
+.tree-ober.open:not([class*="origin-"]), .wb-sec.open:not(.missing) { border-left-color: var(--lvl-strong); }
+.tree-ober.open .grp-stat:not(.done):not(.skip), .wb-sec.open .grp-stat:not(.done) { background: var(--surface); }
+.tree-ober.open .skip-btn { border-color: var(--lvl-line); }
+
+/* Inhalt des Oberordners: eingerückt an einer durchgezogenen Linie, ohne eigenen Kasten */
+.tree-ober.open + .tree-body, .wb-sec.open + .wb-sec-body {
+  background: none; border: none; border-left: 3px solid var(--lvl-line); border-radius: 0;
+  margin: var(--sp-1h) 0 var(--sp-3) var(--sp-2); padding: 0 0 0 var(--sp-2);
+}
+
+/* --- Unterordner: eine Stufe kleiner und flacher --- */
+.tree-unter, .wb-sub {
+  margin-left: 0; width: 100%; min-height: 2.75rem; padding: .5625rem var(--sp-2h);
+  font-size: var(--fs-14); font-weight: 600; border-radius: var(--radius-md); box-shadow: none;
+}
+.tree-body > .tree-unter:first-child, .wb-sec-body > .wb-sub:first-child { margin-top: 0; }
+.tree-unter .skip-btn { width: 2rem; height: 2rem; }
+.tree-unter.open, .wb-sub.open:not(.missing) {
+  background: var(--lvl2-head); color: var(--text);
+  border-style: solid; border-width: 1px;
+  border-top-color: var(--lvl-line); border-right-color: var(--lvl-line); border-bottom-color: var(--lvl-line);
+  border-radius: var(--radius-md); margin-bottom: 0;
+}
+.tree-unter.open:not([class*="origin-"]), .wb-sub.open:not(.missing) { border-left-color: var(--lvl-line); }
+/* Inhalt des Unterordners: dünnere Linie, wenig Einzug (Platz für die Positionen am Handy) */
+.tree-unter.open + .tree-body, .wb-sub.open + .wb-sub-body {
+  background: none; border: none; border-left: 2px solid var(--lvl2-line); border-radius: 0;
+  margin: var(--sp-1h) 0 var(--sp-2) var(--sp-1h); padding: 0 0 0 var(--sp-1h);
+}
+.tree-ober.open.skipped, .tree-unter.open.skipped { background: var(--surface-2); border-style: dashed; }
+
+@media (forced-colors: active) {
+  .tree-ober.open + .tree-body, .wb-sec.open + .wb-sec-body,
+  .tree-unter.open + .tree-body, .wb-sub.open + .wb-sub-body { border-left-color: CanvasText; }
+}

@@ -979,7 +979,7 @@ const Wochenbericht = (() => {
       head.type = 'button';
       head.className = 'wb-sec' + (offen.has(s.id) ? ' open' : '');
       head.dataset.sid = s.id;
-      head.innerHTML = `<span class="chev">${Icon('chevron-right')}</span>
+      head.innerHTML = `<span class="chev">${Icon('chevron-right')}</span><span class="grp-folder" aria-hidden="true">${Icon('folder', 'zu')}${Icon('folder-open', 'auf')}</span>
         <span class="wb-sec-name">${i + 1}. ${escHtml(s.titel)}</span>
         <span class="grp-check wb-sec-check" hidden>${Icon('circle-check')}</span>
         <span class="grp-stat wb-sec-stat"></span>`;
