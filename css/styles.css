@@ -126,6 +126,7 @@
   --dur-ui: 200ms;
   --ease: cubic-bezier(0.23, 1, 0.32, 1);        /* starke Ease-out-Kurve (animate-Skill) */
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1); /* iOS-artige Sheet-Kurve */
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1); /* Bewegung an Ort und Stelle (Drehen, Wachsen) */
 
   /* Icon-Masken für Banner (Lucide, als Data-URI) */
   --ico-triangle-alert: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3%22/%3E%3Cpath d=%22M12 9v4%22/%3E%3Cpath d=%22M12 17h.01%22/%3E%3C/svg%3E");
@@ -1192,7 +1193,7 @@ textarea.wb-notiztext { min-height: 4.125rem; }
 /* ---------- Pfeile drehen statt Zeichen tauschen ---------- */
 .tree-ober .chev, .tree-unter .chev, .wb-sec .chev, .wb-sub .chev, .job-more .chev {
   display: inline-flex; align-items: center; justify-content: center;
-  transition: transform var(--dur-ui) var(--ease);
+  transition: transform var(--dur-ui) var(--ease-in-out);   /* dreht an Ort und Stelle (v84.14) */
 }
 .tree-ober.open .chev, .tree-unter.open .chev, .wb-sec.open .chev, .wb-sub.open .chev, .job-more.open .chev {
   transform: rotate(90deg);
@@ -1207,7 +1208,7 @@ textarea.wb-notiztext { min-height: 4.125rem; }
   content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
   background: var(--brand-fg); opacity: .55; transform-origin: left center;
   transform: scaleX(var(--p, 0));
-  transition: transform 250ms var(--ease), background-color var(--dur);
+  transition: transform 250ms var(--ease-in-out), background-color var(--dur);
 }
 .tree-ober.alldone::after, .tree-unter.alldone::after, .wb-sec.done::after, .wb-sub.fertig::after { background: var(--success-solid); opacity: .8; }
 .tree-ober.skipped::after, .tree-unter.skipped::after { display: none; }
@@ -1266,7 +1267,7 @@ textarea.wb-notiztext { min-height: 4.125rem; }
 .btn.is-busy::before {
   content: ""; flex: 0 0 auto; width: 1rem; height: 1rem; border-radius: 50%;
   border: 2px solid currentColor; border-right-color: transparent;
-  animation: spin 700ms linear infinite;
+  animation: spin 600ms linear infinite;   /* schneller Kringel wirkt kürzer (v84.14) */
 }
 .btn.is-busy:disabled { opacity: .85; }
 @keyframes spin { to { transform: rotate(360deg); } }

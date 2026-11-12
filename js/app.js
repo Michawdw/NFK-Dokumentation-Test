@@ -1470,7 +1470,7 @@ const App = (() => {
   function dreheChev(kopf) {
     const chev = kopf && kopf.querySelector('.chev');
     if (ohneAnimation(chev)) return;
-    chev.animate([{ transform: 'none' }, { transform: 'rotate(90deg)' }], { duration: DUR, easing: EASE });
+    chev.animate([{ transform: 'none' }, { transform: 'rotate(90deg)' }], { duration: DUR, easing: Bewegung.EASE_IN_OUT });
   }
 
   async function nameRow(n, urls) {
@@ -2506,7 +2506,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v84.13'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
+  const APP_VERSION = 'v84.14'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
