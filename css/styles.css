@@ -1656,3 +1656,31 @@ main .wb-kopf h3, main .vp-item h3 { margin-top: 0; }
   .tree-ober.open + .tree-body, .wb-sec.open + .wb-sec-body,
   .tree-unter.open + .tree-body, .wb-sub.open + .wb-sub-body { border-left-color: CanvasText; }
 }
+
+/* ---------- Mehrzeilige Ordnerköpfe (v84.18) ----------
+   Bricht ein Name um, stehen Pfeil, Ordner, ✓, Zähler und Knöpfe auf Höhe der ERSTEN Zeile
+   (nicht mittig zwischen beiden), und die 2. Zeile beginnt bündig unter dem Text. Prinzip:
+   Jeder Kopf hat ein „Band“ für die erste Zeile (= Höhe seines höchsten Seiten-Elements);
+   alles wird in diesem Band mittig gesetzt. Einzeilige Köpfe bleiben pixelgleich.
+   --zeile = Zeilenhöhe des Namens (line-height 1.3, siehe „Namen … umbrechen“ oben). */
+.tree-ober, .tree-unter, .wb-sec, .wb-sub { align-items: flex-start; }
+.tree-ober  { --band: 2.25rem;  --zeile: calc(var(--fs-16) * 1.3); }   /* skip-btn / del-btn 2,25 rem */
+.tree-unter { --band: 2rem;     --zeile: calc(var(--fs-14) * 1.3); }   /* skip-btn 2 rem */
+.tree-unter:has(> .del-btn) { --band: 2.25rem; }                        /* eigener Unterordner: 🗑 2,25 rem */
+.wb-sec     { --band: 1.375rem; --zeile: calc(var(--fs-16) * 1.3); }   /* Zähler-Pille 22 px */
+.wb-sub     { --band: 1.375rem; --zeile: calc(var(--fs-14) * 1.3); }
+:is(.tree-ober, .tree-unter, .wb-sec, .wb-sub) > :is(.chev, .grp-folder, .grp-check) {
+  min-height: var(--band); display: inline-flex; align-items: center;
+}
+:is(.tree-ober, .tree-unter, .wb-sec, .wb-sub) > :is(.grp-name, .wb-sec-name, .wb-sub-name, .wb-sec-nr) {
+  padding-top: calc((var(--band) - var(--zeile)) / 2);
+}
+:is(.tree-ober, .tree-unter, .wb-sec, .wb-sub) > .grp-stat { margin-top: calc((var(--band) - 1.375rem) / 2); }
+.tree-ober > .skip-btn, :is(.tree-ober, .tree-unter) > .del-btn { margin-top: calc((var(--band) - 2.25rem) / 2); }
+.tree-unter > .skip-btn { margin-top: calc((var(--band) - 2rem) / 2); }
+/* Abschnittsnummer im Wochenbericht als eigene Spalte */
+.wb-sec-nr {
+  flex: 0 0 auto; line-height: 1.3; font-variant-numeric: tabular-nums;
+  margin-right: calc(.3em - var(--sp-2));   /* Abstand zum Titel wie ein Leerzeichen – kein Platzverlust */
+}
+.wb-sec.done .wb-sec-nr { color: var(--success); opacity: .85; }
