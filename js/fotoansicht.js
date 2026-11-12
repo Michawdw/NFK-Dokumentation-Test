@@ -184,9 +184,46 @@ const Fotoansicht = (() => {
   }
 
   // ------------------------------------------------------------------ Öffnen / Schließen
+  // ------------------------------------------------------------------ Zurück-Taste (v84.8)
+  // Die Android-Zurück-Taste (und die Zurück-Geste) soll die Ansicht schließen wie das ✕.
+  // Bis v84.7 ging sie an der Ansicht vorbei in den Verlauf der App: einmal drücken
+  // wechselte die Seite dahinter, zweimal schloss die App. Darum legt das Öffnen einen
+  // eigenen Verlaufseintrag an. Zurück nimmt ihn weg → app.js (popstate) fragt zuerst hier
+  // nach (zurueckTaste). Schließt man per ✕/Wischen/Löschen, wird der Eintrag mit
+  // history.back() wieder entfernt; das dadurch ausgelöste popstate wird ignoriert.
+  let verlaufEintrag = false;        // unser Eintrag liegt oben im Verlauf
+  let popIgnorieren = 0;             // so viele popstate-Ereignisse stammen von uns selbst
+  function verlaufAnlegen() {
+    if (verlaufEintrag) return;
+    history.pushState(Object.assign({}, history.state, { foto: true }), '');
+    verlaufEintrag = true;
+  }
+  function verlaufEntfernen() {
+    if (!verlaufEintrag) return;
+    verlaufEintrag = false;
+    popIgnorieren++;
+    history.back();
+  }
+  // Von app.js im popstate aufgerufen. true = das Ereignis gehörte der Fotoansicht.
+  function zurueckTaste() {
+    if (popIgnorieren) { popIgnorieren--; return true; }
+    if (!verlaufEintrag) return false;
+    verlaufEintrag = false;
+    const dialog = document.getElementById('modalOverlay');
+    if (dialog && !dialog.hidden) {
+      // Liegt ein Dialog („Bild löschen?") darüber, schließt Zurück nur den Dialog.
+      document.getElementById('modalCancel').click();
+      verlaufAnlegen();
+      return true;
+    }
+    schliessen();
+    return true;
+  }
+
   async function oeffnen(o) {
     init();
     if (schliesst) await schliesst;      // ein laufendes Schließen erst zu Ende bringen
+    verlaufAnlegen();
     stoppeAlle();
     opt = o;
     index = klemme(o.index || 0, 0, o.liste.length - 1);
@@ -214,6 +251,7 @@ const Fotoansicht = (() => {
   function schliessen(v = { x: 0, y: 0 }) {
     if (!ov || ov.hidden) return Promise.resolve();
     if (schliesst) return schliesst;
+    verlaufEntfernen();                  // ✕ / Wischen / Löschen: eigenen Verlaufseintrag wieder weg
     schliesst = new Promise((fertig) => {
       clearTimeout(tippTimer);
       const a = cur().g ? aktuellePose() : null;   // null: Bild noch nicht geladen → nur ausblenden
@@ -496,5 +534,5 @@ const Fotoansicht = (() => {
     });
   }
 
-  return { oeffnen, schliessen };
+  return { oeffnen, schliessen, zurueckTaste };
 })();

@@ -2379,6 +2379,8 @@ const App = (() => {
     // gepushte Einträge im Verlauf liegen und der Android-Zurück-Button wirkte mehrfach
     // wirkungslos, bevor die App schloss.
     window.addEventListener('popstate', (e) => {
+      // Offene Fotoansicht: Zurück schließt nur sie (siehe Fotoansicht.zurueckTaste).
+      if (typeof Fotoansicht !== 'undefined' && Fotoansicht.zurueckTaste()) return;
       let ziel = (e.state && e.state.nfk) ? e.state.nfk : 'view-start';
       // Verlaufseinträge stammen evtl. von einem vorher geöffneten Auftrag – ohne gespeicherte
       // Stammdaten führt auch der Verlauf nicht in einen Arbeitsbereich.
@@ -2446,7 +2448,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v84.7'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
+  const APP_VERSION = 'v84.8'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
