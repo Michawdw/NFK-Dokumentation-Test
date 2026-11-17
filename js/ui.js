@@ -18,37 +18,89 @@ const UI = (() => {
   const $ = (s) => document.querySelector(s);
   const KEY = 'nfk-theme';
 
-  // ---------------------------------------------------------------- Hell / Dunkel
+  // ---------------------------------------------------------------- Hell / Dunkel / System
+  // Wahl (ab v85): 'light' | 'dark' gespeichert, „System" = kein Eintrag (folgt dem Handy).
+  // Gespeichert wird nur auf diesem Gerät (localStorage), wie bisher unter 'nfk-theme'.
   const systemDunkel = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : { matches: false };
+  const WAHLEN = [
+    { wert: 'light', text: 'Hell', icon: 'sun' },
+    { wert: 'dark', text: 'Dunkel', icon: 'moon' },
+    { wert: 'system', text: 'System', icon: 'monitor' },
+  ];
+  let sitzungsWahl = null;   // privater Modus ohne localStorage: Wahl gilt nur für diese Sitzung
   function gespeichert() {
-    try { return localStorage.getItem(KEY); } catch (e) { return null; }
+    try { return localStorage.getItem(KEY); } catch (e) { return sitzungsWahl; }
   }
-  const aktuell = () => gespeichert() || (systemDunkel.matches ? 'dark' : 'light');
+  const wahl = () => { const t = gespeichert(); return t === 'light' || t === 'dark' ? t : 'system'; };
 
   function themeAnwenden() {
-    const t = gespeichert();
-    if (t) document.documentElement.dataset.theme = t;
-    else delete document.documentElement.dataset.theme;
-    const dunkel = aktuell() === 'dark';
-    // Statusleiste des Handys passend einfärben.
-    document.querySelectorAll('meta[name="theme-color"]').forEach((m) => {
-      m.setAttribute('content', dunkel ? '#17191e' : '#ffffff');
-    });
+    const w = wahl();
+    if (w === 'system') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = w;
+    // Statusleiste des Handys in der Hintergrundfarbe der App einfärben (Token --bg).
+    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    if (bg) document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', bg));
     const btn = $('#themeBtn');
     if (btn) {
-      btn.innerHTML = Icon(dunkel ? 'sun' : 'moon');
-      const text = dunkel ? 'Helles Layout' : 'Dunkles Layout';
+      const eintrag = WAHLEN.find((x) => x.wert === w);
+      btn.innerHTML = Icon(eintrag.icon);
+      const text = 'Layout: ' + eintrag.text;
       btn.title = text;
       btn.setAttribute('aria-label', text);
+      btn.setAttribute('aria-haspopup', 'menu');
     }
+    const menue = $('#themeMenue');
+    if (menue) menue.querySelectorAll('[data-wahl]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.wahl === w)));
   }
 
-  function themeWechseln() {
-    const neu = aktuell() === 'dark' ? 'light' : 'dark';
-    try { localStorage.setItem(KEY, neu); } catch (e) { /* privater Modus: nur für diese Sitzung */ document.documentElement.dataset.theme = neu; }
+  function themeSetzen(w) {
+    if (w === wahl()) return;
+    try {
+      if (w === 'system') localStorage.removeItem(KEY); else localStorage.setItem(KEY, w);
+    } catch (e) { sitzungsWahl = w === 'system' ? null : w; }
     document.documentElement.classList.add('theme-wechsel');
     themeAnwenden();
     setTimeout(() => document.documentElement.classList.remove('theme-wechsel'), 250);
+  }
+
+  // Kleines Auswahlmenü unter dem Knopf in der Kopfleiste.
+  function menueBauen() {
+    const m = document.createElement('div');
+    m.id = 'themeMenue';
+    m.className = 'theme-menue';
+    m.setAttribute('role', 'menu');
+    m.setAttribute('aria-label', 'Layout');
+    m.hidden = true;
+    m.innerHTML = '<div class="theme-menue-titel">Layout</div>' + WAHLEN.map((x) =>
+      `<button type="button" role="menuitemradio" class="theme-wahl" data-wahl="${x.wert}">${Icon(x.icon)}<span>${x.text}</span>${Icon('check', 'theme-haken')}</button>`).join('');
+    m.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-wahl]');
+      if (!b) return;
+      themeSetzen(b.dataset.wahl);
+      menueZu();
+    });
+    document.body.appendChild(m);
+    return m;
+  }
+  function menueOffen() { const m = $('#themeMenue'); return !!(m && !m.hidden); }
+  function menueAuf() {
+    const m = $('#themeMenue') || menueBauen();
+    const btn = $('#themeBtn');
+    themeAnwenden();
+    const r = btn.getBoundingClientRect();
+    m.style.top = Math.round(r.bottom + 6) + 'px';
+    m.style.right = Math.max(8, Math.round(window.innerWidth - r.right)) + 'px';
+    m.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    const aktiv = m.querySelector('[aria-checked="true"]');
+    if (aktiv) aktiv.focus({ preventScroll: true });
+  }
+  function menueZu() {
+    const m = $('#themeMenue');
+    if (!m || m.hidden) return;
+    m.hidden = true;
+    const btn = $('#themeBtn');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
   }
 
   // ---------------------------------------------------------------- Kopfleiste
@@ -118,7 +170,15 @@ const UI = (() => {
   document.addEventListener('DOMContentLoaded', () => {
     themeAnwenden();
     const btn = $('#themeBtn');
-    if (btn) btn.onclick = themeWechseln;
+    if (btn) {
+      btn.setAttribute('aria-expanded', 'false');
+      btn.onclick = (e) => { e.stopPropagation(); if (menueOffen()) menueZu(); else menueAuf(); };
+    }
+    // Schließen: Tipp daneben, Esc, Scrollen, Drehen des Handys.
+    document.addEventListener('click', (e) => { if (menueOffen() && !e.target.closest('#themeMenue')) menueZu(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && menueOffen()) { menueZu(); if (btn) btn.focus(); } });
+    window.addEventListener('scroll', menueZu, { passive: true });
+    window.addEventListener('resize', menueZu);
     if (systemDunkel.addEventListener) systemDunkel.addEventListener('change', themeAnwenden);
     const f = $('#projectForm');
     if (f) f.addEventListener('submit', nachSpeichern, true);   // vor dem Speichern-Handler

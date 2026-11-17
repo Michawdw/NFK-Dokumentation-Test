@@ -168,8 +168,9 @@ const Sheet = (() => {
   // Apples Projektion: wo käme das Sheet mit dem aktuellen Schwung zur Ruhe?
   const projektion = (v, d = 0.998) => (v / 1000) * d / (1 - d);
 
-  function wischenEinrichten() {
-    const o = document.getElementById('modalOverlay');
+  // Wischen-zum-Schließen für ein Overlay; schliessenId = sein ✕-Knopf (ab v85.2 auch Auftragsmenü).
+  function wischenFuer(overlayId, schliessenId) {
+    const o = document.getElementById(overlayId);
     const p = o && o.querySelector('.modal');
     const griff = p && p.querySelector('.modal-head');
     if (!griff || !window.PointerEvent) return;
@@ -224,7 +225,7 @@ const Sheet = (() => {
       const ziel = y + projektion(v);
       if (e.type !== 'pointercancel' && (ziel > h * 0.4 || (v > 800 && y > 0))) {
         // Schließen über den ✕-Knopf: derselbe Weg wie „Abbrechen" des jeweiligen Dialogs.
-        document.getElementById('modalClose').click();
+        document.getElementById(schliessenId).click();
       } else if (reduce.matches) {
         setze(0);                // Weichzeichner wieder voll (Abdunkelung räumt aufraeumen auf)
         aufraeumen(o);
@@ -236,7 +237,10 @@ const Sheet = (() => {
     griff.addEventListener('pointercancel', loslassen);
   }
 
-  document.addEventListener('DOMContentLoaded', wischenEinrichten);
+  document.addEventListener('DOMContentLoaded', () => {
+    wischenFuer('modalOverlay', 'modalClose');
+    wischenFuer('jobsOverlay', 'jobsClose');
+  });
 
   return { zeigen, verbergen };
 })();

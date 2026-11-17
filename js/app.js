@@ -30,11 +30,6 @@ const App = (() => {
     if (aktiveView === 'view-bautagebuch' && viewId !== 'view-bautagebuch') flushDiary();
     if (aktiveView === 'view-vorpruefung' && viewId !== 'view-vorpruefung') Vorpruefung.flush();
     if (aktiveView === 'view-wochenbericht' && viewId !== 'view-wochenbericht') Wochenbericht.flush();
-    // Zurück auf die Startseite: „Weitere Aufträge" wieder zuklappen.
-    if (viewId === 'view-start' && aktiveView !== 'view-start' && weitereOffen) {
-      weitereOffen = false;
-      renderJobList();
-    }
     // Von der Startseite aus: Lage der angetippten Kachel merken, solange sie noch sichtbar ist
     // (die neue Seite wächst dann genau aus ihr heraus, v84.19).
     const kachelVor = (vorher === 'view-start' && viewId !== 'view-start')
@@ -227,19 +222,24 @@ const App = (() => {
   // den Weg „Abbrechen“, den jeder Dialog dort hinterlegt hat. Ohne Umweg über den Verlauf: kein
   // Wettlauf, wenn direkt nach einer Rückfrage die nächste kommt oder die Ansicht wechselt.
   // Ältere Browser ohne CloseWatcher verhalten sich wie bisher.
-  let dialogWaechter = null;
+  // Ab v85.2 je Overlay ein eigener Wächter: Dialog (#modalOverlay) und Auftragsmenü
+  // (#jobsOverlay) können gleichzeitig offen sein – die Zurück-Taste schließt dann zuerst
+  // den obersten (zuletzt geöffneten), danach das Menü.
+  const SCHLIESSEN = { modalOverlay: '#modalClose', jobsOverlay: '#jobsClose' };
   function waechterAn(o) {
-    if (o.id !== 'modalOverlay' || dialogWaechter || typeof window.CloseWatcher !== 'function') return;
-    try { dialogWaechter = new window.CloseWatcher(); } catch (e) { dialogWaechter = null; return; }
-    dialogWaechter.onclose = () => {
-      dialogWaechter = null;
-      if (!o.hidden && !o._zu) $('#modalClose').click();
+    if (!SCHLIESSEN[o.id] || o._waechter || typeof window.CloseWatcher !== 'function') return;
+    let w;
+    try { w = new window.CloseWatcher(); } catch (e) { return; }
+    o._waechter = w;
+    w.onclose = () => {
+      o._waechter = null;
+      if (!o.hidden && !o._zu) $(SCHLIESSEN[o.id]).click();
     };
   }
   function waechterAus(o) {
-    if (o.id !== 'modalOverlay' || !dialogWaechter) return;
-    const w = dialogWaechter;
-    dialogWaechter = null;
+    const w = o._waechter;
+    if (!w) return;
+    o._waechter = null;
     w.onclose = null;
     try { w.destroy(); } catch (e) { /* egal */ }
   }
@@ -599,70 +599,95 @@ const App = (() => {
     await DB.setCurrentJobId(id);
     resetJobState();
     await loadStartView();
+    nachAuftragswechsel();
     toast('Auftrag „' + (job.name || job.header.filiale || '') + '" geöffnet');
   }
 
-  // Nur der aktive Auftrag steht offen da; alle anderen liegen im Klappfeld „Weitere Aufträge".
-  // Bei vielen Baustellen rutschten sonst die Stammdaten des aktiven Auftrags weit nach unten.
-  // Das Feld ist beim Betreten der Startseite und nach jedem Auftragswechsel zu (resetJobState).
-  let weitereOffen = false;
+  // ------------------------------------------------------------------ Auftragsmenü (ab v85.2)
+  // Knopf „Aufträge" oben rechts öffnet ein Blatt mit allen Aufträgen (aktiver oben),
+  // Suchfeld, „Neuer Auftrag" und „Auftrag übernehmen". Nur Darstellung/Navigation –
+  // Wechseln, Umbenennen, Löschen, Anlegen laufen über die bisherigen Funktionen.
+  async function oeffneAuftraege() {
+    const o = $('#jobsOverlay');
+    const suche = $('#jobsSuche');
+    if (suche) suche.value = '';
+    const v = $('#jobsVersion');
+    if (v) v.textContent = APP_VERSION;
+    await renderJobList();
+    openOverlay(o);
+  }
+  function schliesseAuftraege(danach) {
+    closeOverlay($('#jobsOverlay'), danach);
+  }
+  // Nach einem Auftragswechsel: Menü zu und – aus einer Unterseite heraus – auf die
+  // Startseite des neuen Auftrags. Der Verlaufseintrag der Unterseite wird ersetzt, damit
+  // die Zurück-Taste nicht in den Arbeitsbereich des alten Auftrags führt.
+  function nachAuftragswechsel() {
+    schliesseAuftraege();
+    if (aktiveView !== 'view-start') {
+      try { history.replaceState(null, ''); } catch (e) { /* egal */ }
+      _switchView('view-start', true);
+    }
+  }
+  function sucheAnwenden() {
+    const q = (($('#jobsSuche') || {}).value || '').trim().toLowerCase();
+    let treffer = 0;
+    $$('#jobList .job-item').forEach((el) => {
+      const ok = !q || (el.dataset.suche || '').includes(q);
+      el.hidden = !ok;
+      if (ok) treffer++;
+    });
+    const leer = $('#jobsLeer');
+    if (leer) leer.hidden = treffer > 0;
+  }
+  // Nur Bilder der Bilddokumentation zählen (wie DB.isBilddokuPhoto) – liest nur Schlüssel.
+  async function fotoAnzahl(jobId) {
+    try {
+      const map = await DB.countPhotosByNode(jobId);
+      let n = 0;
+      map.forEach((c, key) => { if (!(typeof key === 'string' && key.indexOf('__') === 0)) n += c; });
+      return n;
+    } catch (e) { return null; }
+  }
 
+  // Alle Aufträge untereinander, der aktive oben (ab v85.2 im Menü „Aufträge").
   async function renderJobList() {
     const cont = $('#jobList');
     if (!cont) return;
     const jobs = await DB.listJobs();   // zuletzt bearbeitet oben
-    cont.innerHTML = '';
     const aktiv = currentJob ? jobs.find((j) => j.id === currentJob.id) : null;
-    if (!aktiv) { jobs.forEach((j) => cont.appendChild(jobItem(j, false))); return; }
-    cont.appendChild(jobItem(aktiv, true));
-    const weitere = jobs.filter((j) => j !== aktiv);
-    if (!weitere.length) return;
-
-    const knopf = document.createElement('button');
-    knopf.type = 'button';
-    knopf.className = 'job-more';
-    const liste = document.createElement('div');
-    liste.className = 'job-more-list';
-    weitere.forEach((j) => liste.appendChild(jobItem(j, false)));
-    knopf.innerHTML = `<span class="chev">${Icon('chevron-right')}</span>Weitere Aufträge (${weitere.length})`;
-    const zeige = () => {
-      liste.hidden = !weitereOffen;
-      knopf.classList.toggle('open', weitereOffen);
-      knopf.setAttribute('aria-expanded', String(weitereOffen));
-    };
-    knopf.onclick = async () => {
-      // Kein Input-Lockout: Tipp während des Zuklappens kürzt es ab und wird danach ausgeführt.
-      if (knopf._klappt) { knopf._wartend = true; abkuerzen(liste); return; }
-      weitereOffen = !weitereOffen;
-      if (weitereOffen) { zeige(); animOpen(liste); return; }
-      knopf._klappt = true;
-      knopf.classList.remove('open');      // Pfeil dreht schon beim Zuklappen zurück
-      await animClose(liste);
-      knopf._klappt = false;
-      // Erst die (stehengebliebene) Zuklapp-Animation lösen, DANN ausblenden: an einem
-      // ausgeblendeten Element meldet der Browser sie nicht mehr, sie bliebe hängen und die
-      // Liste stünde beim nächsten Öffnen mit Höhe 0 da.
-      if (liste.getAnimations) liste.getAnimations().forEach((a) => a.cancel());
-      liste.style.overflow = '';
-      zeige();
-      if (knopf._wartend) { knopf._wartend = false; knopf.onclick(); }
-    };
-    zeige();
-    cont.appendChild(knopf);
-    cont.appendChild(liste);
+    const reihe = aktiv ? [aktiv, ...jobs.filter((j) => j !== aktiv)] : jobs;
+    const anzahl = await Promise.all(reihe.map((j) => fotoAnzahl(j.id)));
+    const frag = document.createDocumentFragment();
+    reihe.forEach((j, i) => frag.appendChild(jobItem(j, j === aktiv, anzahl[i])));
+    cont.replaceChildren(frag);
+    sucheAnwenden();
   }
 
-  function jobItem(j, active) {
+  function datumDE(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+    return m ? `${m[3]}.${m[2]}.${m[1]}` : (iso || '');
+  }
+
+  function jobItem(j, active, fotos) {
     const div = document.createElement('div');
     div.className = 'job-item' + (active ? ' active' : '');
-    const sub = [j.header.filiale, j.header.ort, j.header.datum].filter(Boolean).join(' · ');
+    const h = j.header || {};
+    const name = j.name || h.filiale || 'Auftrag';
+    const teile = [h.filiale !== name ? h.filiale : '', h.ort, datumDE(h.datum)].filter(Boolean);
+    if (fotos != null) teile.push(fotos === 1 ? '1 Foto' : fotos + ' Fotos');
+    div.dataset.suche = [name, h.filiale, h.ort, h.datum, datumDE(h.datum)].filter(Boolean).join(' ').toLowerCase();
     div.innerHTML = `<div class="job-main">
-        <div class="job-name">${escHtml(j.name || j.header.filiale || 'Auftrag')}</div>
-        <div class="job-sub">${escHtml(sub)}</div>
+        <div class="job-name">${escHtml(name)}${active ? ' <span class="job-aktiv">aktiv</span>' : ''}</div>
+        <div class="job-sub">${escHtml(teile.join(' · '))}</div>
       </div>
+      ${active ? '' : '<button type="button" class="btn primary job-open">Öffnen</button>'}
       <button class="job-edit" title="Umbenennen" aria-label="Umbenennen">${Icon('pencil')}</button>
       <button class="job-del" title="Löschen" aria-label="Löschen">${Icon('trash-2')}</button>`;
-    div.querySelector('.job-main').onclick = () => { if (!active) switchJob(j.id); };
+    // Aktiver Auftrag: Tipp auf die Zeile schließt das Menü; andere: Zeile und „Öffnen" wechseln.
+    div.querySelector('.job-main').onclick = () => { if (active) schliesseAuftraege(); else switchJob(j.id); };
+    const oeffnen = div.querySelector('.job-open');
+    if (oeffnen) oeffnen.onclick = (e) => { e.stopPropagation(); switchJob(j.id); };
     div.querySelector('.job-edit').onclick = (e) => { e.stopPropagation(); renameJob(j); };
     div.querySelector('.job-del').onclick = (e) => { e.stopPropagation(); deleteJobFlow(j); };
     return div;
@@ -706,13 +731,15 @@ const App = (() => {
     await DB.deleteJob(job.id);
 
     // War es der aktive Auftrag? Dann auf einen anderen wechseln (oder neuen anlegen).
-    if (currentJob && currentJob.id === job.id) {
+    const warAktiv = !!(currentJob && currentJob.id === job.id);
+    if (warAktiv) {
       currentJob = null;
       await DB.setCurrentJobId(null);
       resetJobState();
       await ensureCurrentJob();
     }
     await loadStartView();
+    if (warAktiv) nachAuftragswechsel();
     toast('Auftrag gelöscht');
   }
 
@@ -744,6 +771,7 @@ const App = (() => {
     await DB.setCurrentJobId(job.id);
     resetJobState();
     await loadStartView();
+    nachAuftragswechsel();
     // Kein direkter Sprung: erst Stammdaten ausfüllen + speichern, danach folgt die
     // Vorprüfung automatisch (siehe saveProjectForm).
     toast('Neuer Auftrag – bitte Stammdaten ausfüllen und speichern');
@@ -2529,6 +2557,15 @@ const App = (() => {
     $$('[data-go]').forEach((b) => b.onclick = () => goGuard(b.dataset.go));
     $('#projectForm').addEventListener('submit', saveProjectForm);
     $('#newJobBtn').onclick = newJobFlow;
+    $('#jobsBtn').onclick = oeffneAuftraege;
+    $('#jobsClose').onclick = () => schliesseAuftraege();
+    $('#jobsSuche').addEventListener('input', sucheAnwenden);
+    $('#jobsOverlay').addEventListener('click', (e) => {
+      if (e.target.id === 'jobsOverlay') schliesseAuftraege();
+    });
+    // Datei für „Auftrag übernehmen" gewählt: Menü schließen, der Import zeigt dann
+    // seine Meldungen und Rückfragen auf der Seite dahinter.
+    $('#startImport').addEventListener('change', (e) => { if (e.target.files && e.target.files.length) schliesseAuftraege(); });
     $('#importTemplate').addEventListener('change', importTemplate);
     $('#templateSelect').addEventListener('change', onTemplateChange);
     $('#templateSelect').addEventListener('change', passeVorlagenSchrift);
@@ -2566,7 +2603,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v84.20'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
+  const APP_VERSION = 'v85.4'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;
@@ -2720,7 +2757,6 @@ const App = (() => {
     expandedUnters.clear();
     treeStand = new Map();
     Wochenbericht.reset(); // geöffneten Wochenbericht nicht in den neuen Auftrag tragen
-    weitereOffen = false;  // Klappfeld „Weitere Aufträge" nach dem Wechsel wieder zu
   }
 
   // Gemeinsamer Einstieg für BEIDE Import-Knöpfe. Erkannt wird am Inhalt, nicht an der
