@@ -1053,6 +1053,12 @@ fieldset.techs legend { font-weight: 500; padding: 0 var(--sp-1h); }
 .vp-seg .vp-opt.active.neutral { background: var(--surface); border-color: var(--border-strong); color: var(--text); }
 .vp-seg .vp-opt.active.mid { background: var(--warning-soft-bg); border-color: var(--warning-soft-bd); color: var(--warning-text); }
 .vp-seg .vp-opt:disabled { opacity: .7; cursor: default; }
+/* Schmale Displays (ab v85.5): Optionen dürfen schmaler werden als ihr längstes Wort –
+   der Text bricht dann um bzw. wird getrennt (lang="de"), statt über den Rand zu laufen. */
+.vp-seg .vp-opt {
+  min-width: 0; padding-left: var(--sp-1h); padding-right: var(--sp-1h);
+  overflow-wrap: break-word; hyphens: auto; -webkit-hyphens: auto; line-height: 1.2;
+}
 .vp-detail { margin-top: var(--sp-3); }
 .vp-textlabel { display: block; font-weight: 500; font-size: var(--fs-13); color: var(--text-muted); }
 .vp-text {
@@ -1203,6 +1209,11 @@ textarea.wb-notiztext { min-height: 4.125rem; }
 .wb-pruefen { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); font-size: var(--fs-14); color: var(--warning-text); font-weight: 500; }
 .wb-pruefen span { flex: 1 1 10rem; }
 .wb-bereiche > .vp-seg { margin-bottom: var(--sp-1); }
+/* Bereichszeile mit vier Optionen: Ist sie zu schmal, stehen die Optionen 2 × 2 statt 4 nebeneinander. */
+.wb-bereich { container-type: inline-size; }
+@container (max-width: 18rem) {
+  .wb-bereich .vp-seg { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 /* ---------- Baubehinderungsanzeige ---------- */
 /* Adressblock als abgesetzte Gruppe, damit Absender/Empfänger nicht mit den
@@ -1787,3 +1798,17 @@ main .wb-kopf h3, main .vp-item h3 { margin-top: 0; }
   margin-right: calc(.3em - var(--sp-2));   /* Abstand zum Titel wie ein Leerzeichen – kein Platzverlust */
 }
 .wb-sec.done .wb-sec-nr { color: var(--text-muted); }
+
+/* ---------- Schmale Displays (ab v85.5) ----------
+   Verschachtelte Ordner/Abschnitte rücken weniger ein, Karten haben weniger Innenabstand –
+   so bleibt für Knöpfe und Texte genug Breite. */
+@media (max-width: 400px) {
+  .tree-ober.open + .tree-body, .wb-sec.open + .wb-sec-body { margin-left: var(--sp-2); padding-left: var(--sp-2); }
+  .tree-unter.open + .tree-body, .wb-sub.open + .wb-sub-body { margin-left: var(--sp-1h); padding-left: var(--sp-1h); }
+  .wb-item, .vp-item { padding: var(--sp-3); }
+  .wb-bereich { padding: var(--sp-2h); }
+  /* Segment-Knöpfe in eingerückten Bereichen: etwas kleinere Schrift, damit Wörter wie
+     „teilweise“ ganz in ihren Knopf passen. */
+  :is(.wb-sec-body, .tree-body) .vp-seg { gap: 2px; padding: .1875rem; }
+  :is(.wb-sec-body, .tree-body) .vp-seg .vp-opt { font-size: var(--fs-13); padding-left: .1875rem; padding-right: .1875rem; }
+}
