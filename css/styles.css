@@ -125,10 +125,10 @@
   --mark-alt:        var(--text-faint);
 
   /* Form */
-  --radius-card:     16px;
-  --radius-btn:      14px;
-  --radius-field:    12px;
-  --radius-tile:     10px;
+  --radius-card:     10px;
+  --radius-btn:      9px;
+  --radius-field:    8px;
+  --radius-tile:     7px;
   --radius-pill:     999px;
 
   /* Abstände (8er-Raster, DESIGN.md) */
@@ -194,7 +194,7 @@
   --radius: var(--radius-tile);
   --radius-md: var(--radius-field);
   --radius-lg: var(--radius-card);
-  --radius-xl: 20px;
+  --radius-xl: 14px;
   --shadow-xs: none;   /* Karten ohne Schatten (DESIGN.md) */
 
   /* Icon-Masken (Lucide, als Data-URI; Farbe kommt aus currentColor) */
