@@ -49,12 +49,12 @@
   --text-faint:      #736d62;
 
   /* Akzent / Status */
-  --accent:          #0a9e57;
-  --accent-pressed:  #088448;
-  --accent-on:       #06210f;   /* Text auf Akzentfläche (dunkel!) */
-  --accent-text:     #077a43;   /* Akzent als Schrift auf hellem Grund (Kontrast AA) */
-  --accent-soft-bg:  #e7f5ee;
-  --accent-soft-bd:  #a8dbbf;
+  --accent:          #52c042;
+  --accent-pressed:  #43a334;
+  --accent-on:       #0d2608;   /* Text auf Akzentfläche (dunkel!) */
+  --accent-text:     #2f7a22;   /* Akzent als Schrift auf hellem Grund (Kontrast AA) */
+  --accent-soft-bg:  #ecf7e8;
+  --accent-soft-bd:  #b3e0a8;
 
   --warning:         #d08a12;
   --warning-text:    #8a5800;
@@ -74,7 +74,7 @@
 
   --on-solid:        #ffffff;   /* Schrift auf kräftiger Rot-Fläche */
   --on-status:       #0b1410;   /* Schrift auf Grün/Orange-Flächen (Balken) */
-  --ring:            rgba(10, 158, 87, .30);
+  --ring:            rgba(82, 192, 66, .30);
   --danger-ring:     rgba(208, 52, 59, .18);
   --warning-ring:    rgba(208, 138, 18, .22);
 
@@ -88,9 +88,9 @@
   --shadow-popover:  0 8px 24px -6px rgba(15, 21, 25, .22);
 
   /* Plastische Tasten (ab v85.1, „Bankautomat“): Verlauf, Lichtkante oben, Kante unten */
-  --key-pri-top:     #19c277;  --key-pri-bottom: #0a9e57;  --key-pri-edge: #077a43;
+  --key-pri-top:     #6fd65c;  --key-pri-bottom: #52c042;  --key-pri-edge: #2f7a22;
   --key-sec-top:     #fffefb;  --key-sec-bottom: #ebe6dc;  --key-sec-edge: #cdc6b8;
-  --key-cam-top:     #f0f9f4;  --key-cam-bottom: #dbefe3;  --key-cam-edge: #a8dbbf;
+  --key-cam-top:     #f2faef;  --key-cam-bottom: #dff2d8;  --key-cam-edge: #b3e0a8;
   --key-dan-top:     #e0545a;  --key-dan-bottom: #c22d34;  --key-dan-edge: #9e1f26;
   --key-light:       rgba(255, 255, 255, .7);
   --key-pri-light:   rgba(255, 255, 255, .4);
@@ -114,11 +114,11 @@
 
   /* Herkunfts-Markierungen (selbst angelegt / zusammengeführt / Vorteam) */
   /* Geöffnete Ordner (ab v85.2, dezent grün) */
-  --lvl1-head:       #eef7f1;
+  --lvl1-head:       #f0f8ec;
   --lvl1-bd:         var(--accent-soft-bd);
-  --lvl1-pill:       #dbefe3;
-  --lvl2-head:       #f5faf7;
-  --lvl2-bd:         #cfe9da;
+  --lvl1-pill:       #dff2d8;
+  --lvl2-head:       #f6fbf3;
+  --lvl2-bd:         #cbe9c2;
 
   --mark-custom:     var(--progress);
   --mark-merge:      var(--info);
@@ -215,26 +215,26 @@
     --bg: #0c1317; --surface: #1b2529; --surface-2: #253035; --icon-tile: #2a3338;
     --divider: #263035; --border: #2f393e; --border-strong: #525a5f;
     --text: #e7e9ed; --text-muted: #8a9096; --text-faint: #6e747a;
-    --accent: #12e07f; --accent-pressed: #038642; --accent-on: #06210f; --accent-text: #12e07f;
-    --accent-soft-bg: #12231d; --accent-soft-bd: #1f5a3c;
+    --accent: #5fd24a; --accent-pressed: #3f9e30; --accent-on: #0d2608; --accent-text: #5fd24a;
+    --accent-soft-bg: #16261a; --accent-soft-bd: #2f5e2a;
     --warning: #e5a02a; --warning-text: #e5a02a; --warning-soft-bg: #1f1b14; --warning-soft-bd: #6b5427;
     --progress: #e5781a;
     --danger: #e5484d; --danger-text: #f0686c; --danger-soft-bg: #361a20; --danger-soft-bd: #5c2a32;
     --info: #5b9bd5; --info-soft-bg: #2b3c4a; --neutral-badge: #303a40;
-    --ring: rgba(18, 224, 127, .32); --danger-ring: rgba(229, 72, 77, .24); --warning-ring: rgba(229, 160, 42, .24);
+    --ring: rgba(95, 210, 74, .32); --danger-ring: rgba(229, 72, 77, .24); --warning-ring: rgba(229, 160, 42, .24);
     --scrim: rgba(0, 0, 0, .6); --topbar-bg: rgba(12, 19, 23, .86); --sheet-head-bg: rgba(27, 37, 41, .88);
     --toast-bg: #e7e9ed; --toast-fg: #0c1317;
     --shadow-overlay: 0 16px 40px -8px rgba(0, 0, 0, .6), 0 2px 6px rgba(0, 0, 0, .3);
     --shadow-popover: 0 12px 32px -8px rgba(0, 0, 0, .7);
-    --key-pri-top: #43f0a0; --key-pri-bottom: #12e07f; --key-pri-edge: #0a8f50;
+    --key-pri-top: #80e36b; --key-pri-bottom: #5fd24a; --key-pri-edge: #348a26;
     --key-sec-top: #333e44; --key-sec-bottom: #232d32; --key-sec-edge: #0b1113;
-    --key-cam-top: #1b3529; --key-cam-bottom: #13281e; --key-cam-edge: #1f5a3c;
+    --key-cam-top: #1f3a1e; --key-cam-bottom: #162b16; --key-cam-edge: #2f5e2a;
     --key-dan-top: #ec5a5f; --key-dan-bottom: #c9363c; --key-dan-edge: #7a1e23;
     --key-light: rgba(255, 255, 255, .09); --key-pri-light: rgba(255, 255, 255, .45);
     --key-shade: rgba(0, 0, 0, .28);
     --key-drop: 0 1px 2px rgba(0, 0, 0, .55), 0 3px 6px -2px rgba(0, 0, 0, .5);
     --key-pressed: inset 0 2px 5px rgba(0, 0, 0, .5);
-    --lvl1-head: #15291f; --lvl1-pill: #1b3a2a; --lvl2-head: #172420; --lvl2-bd: #1f4a35;
+    --lvl1-head: #1a2d1c; --lvl1-pill: #213d1f; --lvl2-head: #18261b; --lvl2-bd: #2a4d26;
   }
 }
 :root[data-theme="dark"] {
@@ -242,26 +242,26 @@
   --bg: #0c1317; --surface: #1b2529; --surface-2: #253035; --icon-tile: #2a3338;
   --divider: #263035; --border: #2f393e; --border-strong: #525a5f;
   --text: #e7e9ed; --text-muted: #8a9096; --text-faint: #6e747a;
-  --accent: #12e07f; --accent-pressed: #038642; --accent-on: #06210f; --accent-text: #12e07f;
-  --accent-soft-bg: #12231d; --accent-soft-bd: #1f5a3c;
+  --accent: #5fd24a; --accent-pressed: #3f9e30; --accent-on: #0d2608; --accent-text: #5fd24a;
+  --accent-soft-bg: #16261a; --accent-soft-bd: #2f5e2a;
   --warning: #e5a02a; --warning-text: #e5a02a; --warning-soft-bg: #1f1b14; --warning-soft-bd: #6b5427;
   --progress: #e5781a;
   --danger: #e5484d; --danger-text: #f0686c; --danger-soft-bg: #361a20; --danger-soft-bd: #5c2a32;
   --info: #5b9bd5; --info-soft-bg: #2b3c4a; --neutral-badge: #303a40;
-  --ring: rgba(18, 224, 127, .32); --danger-ring: rgba(229, 72, 77, .24); --warning-ring: rgba(229, 160, 42, .24);
+  --ring: rgba(95, 210, 74, .32); --danger-ring: rgba(229, 72, 77, .24); --warning-ring: rgba(229, 160, 42, .24);
   --scrim: rgba(0, 0, 0, .6); --topbar-bg: rgba(12, 19, 23, .86); --sheet-head-bg: rgba(27, 37, 41, .88);
   --toast-bg: #e7e9ed; --toast-fg: #0c1317;
   --shadow-overlay: 0 16px 40px -8px rgba(0, 0, 0, .6), 0 2px 6px rgba(0, 0, 0, .3);
   --shadow-popover: 0 12px 32px -8px rgba(0, 0, 0, .7);
-  --key-pri-top: #43f0a0; --key-pri-bottom: #12e07f; --key-pri-edge: #0a8f50;
+  --key-pri-top: #80e36b; --key-pri-bottom: #5fd24a; --key-pri-edge: #348a26;
   --key-sec-top: #333e44; --key-sec-bottom: #232d32; --key-sec-edge: #0b1113;
-  --key-cam-top: #1b3529; --key-cam-bottom: #13281e; --key-cam-edge: #1f5a3c;
+  --key-cam-top: #1f3a1e; --key-cam-bottom: #162b16; --key-cam-edge: #2f5e2a;
   --key-dan-top: #ec5a5f; --key-dan-bottom: #c9363c; --key-dan-edge: #7a1e23;
   --key-light: rgba(255, 255, 255, .09); --key-pri-light: rgba(255, 255, 255, .45);
   --key-shade: rgba(0, 0, 0, .28);
   --key-drop: 0 1px 2px rgba(0, 0, 0, .55), 0 3px 6px -2px rgba(0, 0, 0, .5);
   --key-pressed: inset 0 2px 5px rgba(0, 0, 0, .5);
-  --lvl1-head: #15291f; --lvl1-pill: #1b3a2a; --lvl2-head: #172420; --lvl2-bd: #1f4a35;
+  --lvl1-head: #1a2d1c; --lvl1-pill: #213d1f; --lvl2-head: #18261b; --lvl2-bd: #2a4d26;
 }
 :root[data-theme="light"] { color-scheme: light; }
 /* Beim Umschalten weich überblenden */
@@ -1623,24 +1623,24 @@ main .wb-kopf h3, main .vp-item h3 { margin-top: 0; }
   :root {
     --border: #958d7e; --border-strong: #625b4e; --divider: #b3ab9c;
     --text-muted: #403b33; --text-faint: #4f493f;
-    --accent-text: #05633a; --warning-text: #6e4600; --danger-text: #8f1b22;
-    --ring: rgba(5, 99, 58, .5);
+    --accent-text: #255f1a; --warning-text: #6e4600; --danger-text: #8f1b22;
+    --ring: rgba(37, 95, 26, .5);
   }
 }
 @media (prefers-contrast: more) and (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --border: #5d656d; --border-strong: #8a929b; --divider: #3b444b;
     --text: #ffffff; --text-muted: #c3c8ce; --text-faint: #a9afb6;
-    --accent-text: #5cf0a8; --warning-text: #f2c06b; --danger-text: #ff9a9d;
-    --ring: rgba(92, 240, 168, .55);
+    --accent-text: #8ff07c; --warning-text: #f2c06b; --danger-text: #ff9a9d;
+    --ring: rgba(143, 240, 124, .55);
   }
 }
 @media (prefers-contrast: more) {
   :root[data-theme="dark"] {
     --border: #5d656d; --border-strong: #8a929b; --divider: #3b444b;
     --text: #ffffff; --text-muted: #c3c8ce; --text-faint: #a9afb6;
-    --accent-text: #5cf0a8; --warning-text: #f2c06b; --danger-text: #ff9a9d;
-    --ring: rgba(92, 240, 168, .55);
+    --accent-text: #8ff07c; --warning-text: #f2c06b; --danger-text: #ff9a9d;
+    --ring: rgba(143, 240, 124, .55);
   }
   /* Fokus deutlicher (outline: ohne Einfluss aufs Layout) */
   :focus-visible { outline-width: 3px; }
