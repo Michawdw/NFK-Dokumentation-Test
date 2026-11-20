@@ -167,8 +167,26 @@ const UI = (() => {
     stammdatenZeigen(job);
   }
 
+  // ---------------------------------------------------------------- Mitwachsende Textfelder
+  // Ab v85.7: Freitextfelder behalten ihre Startgröße (über rows) und wachsen mit dem Text mit,
+  // beim Löschen schrumpfen sie wieder bis zur Startgröße (height:auto = rows-Höhe). Kein Zieh-Griff.
+  // Wochenbericht hat dafür schon seit v82 eigenes autoHoehe (wb-auto) – dort gleiches Prinzip.
+  function textHoehe(ta) {
+    if (!ta || ta.tagName !== 'TEXTAREA' || ta.offsetParent === null) return;   // unsichtbar: später
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 2 + 'px';
+  }
+  // Alle Textfelder eines Bereichs anpassen – nach dem Befüllen per Programm (Laden, Korrektur).
+  function textHoehen(root) {
+    (root || document).querySelectorAll('textarea').forEach(textHoehe);
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     themeAnwenden();
+    document.addEventListener('input', (e) => { if (e.target.tagName === 'TEXTAREA') textHoehe(e.target); });
+    document.addEventListener('focusin', (e) => { if (e.target.tagName === 'TEXTAREA') textHoehe(e.target); });
+    let breiteTimer = null;   // Handy gedreht: Zeilenumbrüche ändern sich
+    window.addEventListener('resize', () => { clearTimeout(breiteTimer); breiteTimer = setTimeout(() => textHoehen(), 150); });
     const btn = $('#themeBtn');
     if (btn) {
       btn.setAttribute('aria-expanded', 'false');
@@ -184,5 +202,5 @@ const UI = (() => {
     if (f) f.addEventListener('submit', nachSpeichern, true);   // vor dem Speichern-Handler
   });
 
-  return { aktualisieren };
+  return { aktualisieren, textHoehen };
 })();

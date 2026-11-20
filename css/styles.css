@@ -381,7 +381,8 @@ h3 { font-size: var(--fs-15); font-weight: 500; color: var(--text-muted); margin
   font-weight: 400;
   transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
-.form textarea { resize: vertical; }
+/* Freitextfelder: feste Startgröße (rows), wachsen per JS mit (UI.textHoehen, ab v85.7) – kein Zieh-Griff */
+textarea { resize: none; overflow: hidden; }
 input::placeholder, textarea::placeholder { color: var(--text-faint); opacity: 1; }
 input:focus, textarea:focus, select:focus {
   outline: none; border-color: var(--accent) !important; box-shadow: 0 0 0 3px var(--ring);
@@ -1063,7 +1064,7 @@ fieldset.techs legend { font-weight: 500; padding: 0 var(--sp-1h); }
 .vp-textlabel { display: block; font-weight: 500; font-size: var(--fs-13); color: var(--text-muted); }
 .vp-text {
   width: 100%; margin-top: var(--sp-1h); padding: var(--sp-3) var(--sp-3h); border: 1px solid var(--border);
-  border-radius: var(--radius-field); font-size: var(--fs-16); font-family: inherit; resize: vertical;
+  border-radius: var(--radius-field); font-size: var(--fs-16); font-family: inherit; resize: none; overflow: hidden;
   background: var(--surface-2); color: var(--text);
 }
 .vp-photos { display: flex; flex-wrap: wrap; gap: var(--sp-2h); margin: var(--sp-3) 0; }

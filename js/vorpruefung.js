@@ -229,6 +229,7 @@ const Vorpruefung = (() => {
       list.appendChild(card);
       if (detailOpen) await renderThumbs(card, job, p.id, ro);
     }
+    UI.textHoehen(list);   // gespeicherte lange Texte voll zeigen (ab v85.7)
 
     const completeBtn = $('#vpCompleteBtn');
     if (completeBtn) completeBtn.hidden = ro;

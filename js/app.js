@@ -1914,6 +1914,7 @@ const App = (() => {
     await renderDiaryArchive();
     f.datum.onchange = async () => {
       await flushDiary();                 // alten Tag sichern, bevor das Formular umschaltet
+      await eingabenUmziehen(diaryDate, diaryEinsatz, f.datum.value);
       diaryDate = f.datum.value;
       diaryEinsatz = 1;
       diaryDatumAutomatisch = (diaryDate === Datum.heute());
@@ -1989,20 +1990,61 @@ const App = (() => {
       'Löschen', true);
     if (!ok) return;
     clearTimeout(diarySaveTimer);      // kein verspätetes Auto-Speichern des gelöschten Einsatzes
-    await DB.deleteDiary(currentJob.id, day.datum, day.einsatz);
-    if (nachruecken) {
-      const zwei = await DB.getDiary(currentJob.id, day.datum, 2);
-      if (zwei) {
-        await DB.saveDiary(currentJob.id, Object.assign({}, zwei, { einsatz: 1 }));
-        await DB.deleteDiary(currentJob.id, day.datum, 2);
-      }
-    }
+    await einsatzEntfernen(day.datum, day.einsatz);
     if (day.datum === diaryDate) {
       if (diaryEinsatz === 2 && (nachruecken || day.einsatz === 2)) diaryEinsatz = 1;
       await loadDiaryForDate(diaryDate, diaryEinsatz); // Formular leeren/auffrischen
     }
     await renderDiaryArchive();
     toast(titel + ' gelöscht');
+  }
+
+  // Einsatz aus der DB entfernen. Wird der 1. entfernt und gibt es einen 2., rückt dieser nach.
+  async function einsatzEntfernen(datum, einsatz) {
+    await DB.deleteDiary(currentJob.id, datum, einsatz);
+    if (einsatz !== 1) return;
+    const zwei = await DB.getDiary(currentJob.id, datum, 2);
+    if (zwei) {
+      await DB.saveDiary(currentJob.id, Object.assign({}, zwei, { einsatz: 1 }));
+      await DB.deleteDiary(currentJob.id, datum, 2);
+    }
+  }
+
+  // Datum nachträglich umgestellt (ab v85.7): Wer erst schreibt und dann das Datum ändert, will
+  // meist das Datum KORRIGIEREN. Bis v85.6 blieben die Eingaben kommentarlos unter dem alten Tag
+  // stehen und der neue Tag öffnete leer – das sah wie Löschen aus. Jetzt fragt die App, ob die
+  // Eingaben mitziehen sollen; ist der Zieltag schon belegt, nur nach ausdrücklicher Warnung.
+  // Der alte Stand ist vorher per flushDiary() gesichert.
+  async function eingabenUmziehen(alt, altEinsatz, neu) {
+    if (!currentJob || !alt || !neu || alt === neu) return;
+    const quelle = await DB.getDiary(currentJob.id, alt, altEinsatz);
+    if (!quelle) return;                              // nichts eingetragen → einfach umschalten
+    const ziel = await DB.getDiary(currentJob.id, neu, 1);
+    const a = fmtDate(alt), n = fmtDate(neu);
+    const altName = a + (altEinsatz > 1 ? ` (${altEinsatz}. Einsatz)` : '');
+    const ja = ziel
+      ? await openConfirm(`${n} überschreiben?`,
+        `<p>Für den <b>${n}</b> gibt es schon ein Bautagebuch. Soll es durch deine Eingaben vom
+         <b>${altName}</b> ersetzt werden?</p>
+         <p class="hint">Der bisherige Eintrag vom ${n} geht dabei verloren. Bei „Nein“ bleiben beide Tage
+         unverändert und der ${n} wird geöffnet.</p>`,
+        'Überschreiben', true, 'Nein, ' + n.slice(0, 6) + ' öffnen')
+      : await openConfirm('Eingaben verschieben?',
+        `<p>Deine Eingaben vom <b>${altName}</b> zum <b>${n}</b> verschieben?</p>
+         <p class="hint">Zeiten, Namen und alle Texte ziehen mit um, der ${a} ist danach leer.
+         Bei „Nein“ bleiben die Eingaben unter dem ${a} gespeichert (Archiv) und der ${n} öffnet leer.</p>`,
+        'Ja, zum ' + n.slice(0, 6) + ' verschieben', false, 'Nein, ' + n.slice(0, 6) + ' leer öffnen');
+    if (!ja) {
+      toast(`Deine Eingaben bleiben unter dem ${altName} gespeichert (Archiv)`, 3500);
+      return;
+    }
+    clearTimeout(diarySaveTimer);
+    const neuSatz = Object.assign({}, quelle, { datum: neu, einsatz: 1 });
+    delete neuSatz.tag;
+    if (!quelle.ortDatum || quelle.ortDatum === defaultOrtDatum(alt)) neuSatz.ortDatum = defaultOrtDatum(neu);
+    await DB.saveDiary(currentJob.id, neuSatz);
+    await einsatzEntfernen(alt, altEinsatz);
+    toast(`Eingaben zum ${n} verschoben`);
   }
 
   // Umschalter unter dem Datum: „+ 2. Einsatz an diesem Tag" (sobald der 1. gespeichert ist)
@@ -2078,6 +2120,7 @@ const App = (() => {
     korrekturVorher = null;
     $('#diaryKorrUndo').hidden = true;
     await renderEinsatzLeiste();
+    UI.textHoehen($('#view-bautagebuch'));   // geladene lange Texte voll zeigen (ab v85.7)
   }
 
   // ---- Texte korrigieren (regelbasiert, js/textkorrektur.js) ----
@@ -2152,6 +2195,7 @@ const App = (() => {
       korrekturVorher = {};
       gewaehlt.forEach((v) => { korrekturVorher[v.name] = v.alt; f[v.name].value = v.neu; });
       $('#diaryKorrUndo').hidden = false;
+      UI.textHoehen(f);
       toast('Korrektur übernommen – bitte gegenlesen und Tag speichern.');
     });
   }
@@ -2162,6 +2206,7 @@ const App = (() => {
     Object.entries(korrekturVorher).forEach(([name, alt]) => { f[name].value = alt; });
     korrekturVorher = null;
     $('#diaryKorrUndo').hidden = true;
+    UI.textHoehen(f);
     toast('Originaltexte wiederhergestellt.');
   }
 
@@ -2603,7 +2648,7 @@ const App = (() => {
   // Zeigt unten auf der Startseite die installierte App-Version an. Autoritativ ist
   // die Cache-Version des laufenden Service Workers (per Nachricht abgefragt); solange
   // die noch nicht geantwortet hat, dient APP_VERSION als Sofort-Anzeige/Fallback.
-  const APP_VERSION = 'v85.6'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
+  const APP_VERSION = 'v85.7'; // Mit CACHE in sw.js ändern: v81 -> v82 nur bei neuen Funktionen (Doku), sonst v81.1, v81.2 …
   function renderAppVersion(v) {
     const el = $('#appVersion');
     if (!el) return;

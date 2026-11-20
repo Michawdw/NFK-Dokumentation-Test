@@ -218,6 +218,7 @@ const Behinderung = (() => {
     f.untFunktion.value = u.funktion || a.funktion || '';
     f.ortDatum.value = entry.ortDatum || '';
     clearMissing();
+    UI.textHoehen(f);   // lange Texte voll zeigen (ab v85.7)
   }
 
   function gather() {
