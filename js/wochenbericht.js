@@ -108,7 +108,7 @@ const Wochenbericht = (() => {
       // Ab v60 Pflicht: mindestens 3 Fotos, außer „kein Fortschritt diese Woche". Die Gruppe
       // behält die id 'kabel' (früher „Kabelzüge"), damit vorhandene Fotos weiter zählen; die
       // frühere Gruppe „Serverschränke" (d2-server) zieht nach f6 um (siehe altFotosUmziehen).
-      { id: 'd2', typ: 'fotos', titel: 'Fortschrittsbilder', pflichtMin: 3,
+      { id: 'd2', typ: 'fotos', titel: 'Fortschrittsbilder', pflichtMin: 3, wordSpalten: 3,
         nichts: '– kein Fortschritt diese Woche –', gruppen: [
           { id: 'kabel', label: 'Kabelzug/Ausbau Datendosen' },
         ] },
@@ -1619,7 +1619,7 @@ const Wochenbericht = (() => {
         const a = current.antworten[p.id] || {};
         const inhalt = [];
         const text = (t, stil) => inhalt.push({ text: t, stil });
-        const fotos = (items) => { if (items.length) inhalt.push({ fotos: items }); };
+        const fotos = (items, spalten) => { if (items.length) inhalt.push({ fotos: items, spalten }); };
         let status;
         if (p.typ === 'wahl') {
           const at = antwortText(p);
@@ -1691,7 +1691,7 @@ const Wochenbericht = (() => {
               if (!items.length) continue;
               irgendwas = true;
               text(g.label, { bold: true, sz: 20, after: 40 });
-              fotos(items);
+              fotos(items, p.wordSpalten);   // Fortschrittsbilder: drei nebeneinander (v85.12)
             }
             if (!irgendwas) text('keine Fortschrittsbilder', { color: '5A6672', after: 60 });
           }

@@ -317,6 +317,8 @@ const Docx = (() => {
   const KARTE_LINIE = 'BFC5CC';
   const FOTO_HOCH = { ext: 'jpeg', maxWidthEmu: 7.8 * EMU_PER_CM, maxHeightEmu: 10 * EMU_PER_CM, align: 'center' };
   const FOTO_QUER = { ext: 'jpeg', maxWidthEmu: 15.5 * EMU_PER_CM, maxHeightEmu: 10 * EMU_PER_CM, align: 'center' };
+  // Drei nebeneinander (v85.12, Fortschrittsbilder im Wochenbericht): Hoch- und Querformat gleich.
+  const FOTO_DRITTEL = { ext: 'jpeg', maxWidthEmu: 5.0 * EMU_PER_CM, maxHeightEmu: 7 * EMU_PER_CM, align: 'center' };
   // Höhe eines Textabsatzes in cm (an echten Berichten nachgemessen: 0,47 je Zeile).
   const textCm = (t) => 0.47 * String(t || '').split(/\r?\n/)
     .reduce((n, z) => n + Math.max(1, Math.ceil(z.length / 95)), 0) + 0.13;
@@ -516,6 +518,31 @@ const Docx = (() => {
             let px;
             try { px = await imageSizePx(it.blob); } catch (e) { px = { w: 4, h: 3 }; }
             list.push(Object.assign({}, it, { px, hoch: px.h > px.w }));
+          }
+          // spalten: 3 – je Reihe drei gleich breite Zellen in einer rahmenlosen inneren Tabelle.
+          if (teil.spalten === 3) {
+            const zw = Math.floor((TBL_W - 240) / 3);   // Zellränder der Karte abziehen
+            const ohne = ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']
+              .map((s) => `<w:${s} w:val="none" w:sz="0" w:space="0" w:color="auto"/>`).join('');
+            for (let i = 0; i < list.length; i += 3) {
+              const reihe = list.slice(i, i + 3);
+              let zellen = '';
+              for (let k = 0; k < 3; k++) {
+                const it = reihe[k];
+                if (!it) { zellen += `<w:tc><w:tcPr><w:tcW w:w="${zw}" w:type="dxa"/></w:tcPr><w:p/></w:tc>`; continue; }
+                const img = await api.imageXml(it.blob, Object.assign({ px: it.px }, FOTO_DRITTEL));
+                const cap = (it.caption && String(it.caption).trim())
+                  ? pStyled(it.caption, { sz: 16, color: '5A6672', align: 'center', after: 60 }) : '<w:p/>';
+                zellen += `<w:tc><w:tcPr><w:tcW w:w="${zw}" w:type="dxa"/><w:vAlign w:val="top"/></w:tcPr>${img}${cap}</w:tc>`;
+              }
+              // Reihenfolge in tblPr nach OOXML-Schema: tblW, tblBorders, tblLayout (sonst meckert Word).
+              const innen = `<w:tbl><w:tblPr><w:tblW w:w="${zw * 3}" w:type="dxa"/>` +
+                `<w:tblBorders>${ohne}</w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr>` +
+                `<w:tblGrid>${'<w:gridCol w:w="' + zw + '"/>'.repeat(3)}</w:tblGrid><w:tr><w:trPr><w:cantSplit/></w:trPr>${zellen}</w:tr></w:tbl><w:p/>`;
+              rows += tr(tc(g1 + g2 + g3, 3, innen, '<w:vAlign w:val="top"/>'));
+              hoehe += Math.max(...reihe.map((x) => bildCm(x, FOTO_DRITTEL))) + capCm(...reihe) + 0.4;
+            }
+            continue;
           }
           for (let i = 0; i < list.length; i++) {
             const a = list[i], b = list[i + 1];
