@@ -1402,12 +1402,22 @@ const Wochenbericht = (() => {
     });
     const alle = allePunkte().filter((p) => p.typ !== 'fotos').map((p) => antwortText(p).ampel);
     const gesamt = alle.includes('rot') ? 'rot' : punkte.every((p) => p.ampel === 'gruen') ? 'gruen' : 'gelb';
-    return {
+    const daten = {
       format: 1, appVersion: App.APP_VERSION, kw: current.kw, jahr: o.jahr, woche: o.woche,
       zeitraum: zeitraumText(current.kw), filiale: h.filiale || '', ort: h.ort || '',
       gespraechspartner: current.gespraechspartner || '', erstellt: new Date().toISOString(),
       gesamtampel: gesamt, punkte,
     };
+    // v85.13: Abschnitt Hebebühnen für die AVL-Übersicht – Text und Ampel wie die Kastenzeile.
+    if (abschnitte().some((s) => s.id === 's8')) {
+      const st = buehnenStand(current);
+      const a1 = current.antworten.h1 || {};
+      const hb = { text: st.text, ampel: st.ampel, einbringen: a1.status || '',
+        anzahl: statusVon(current, 'h2') || '', zweiteGebraucht: statusVon(current, 'h3') || '' };
+      if (a1.status === 'probleme' && voll(a1.text)) hb.offen = a1.text.trim();
+      daten.hebebuehnen = hb;
+    }
+    return daten;
   }
 
   // Antwort eines Punkts als Klartext + Ampel für die Übersicht.
