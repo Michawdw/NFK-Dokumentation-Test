@@ -357,7 +357,7 @@ const Wochenbericht = (() => {
       }
       if (p.typ === 'buehnen' && alt && alt.status != null && (!p.sichtbar || p.sichtbar(vorher))) {
         b.antworten[p.id] = leereAntwort(alt.status);
-        b.vor[p.id] = alt.status;             // für „Vorwoche 2 – 1 Bühne abgezogen“
+        b.vor[p.id] = alt.status;             // Zahl der Felder bei „alle abgeholt“ (Kasten)
       }
       if (p.typ !== 'fortschritt') continue;
       if (!alt || !alt.status) continue;
@@ -414,17 +414,50 @@ const Wochenbericht = (() => {
   // anteilFertig/anteilTeil für den Balken (0…1).
   // NWS eingebracht: Stufen des Balkens (v83.3) – erreicht ab der jeweiligen Option.
   const NWS_STUFEN = [['angeliefert', 'angeliefert'], ['in Filiale', 'filiale'], ['im Serverraum', 'serverraum']];
+  // Zeile „Hebebühnen“ im Kasten „Baufortschritt“ (v85.10, Variante B): ein Eintrag für den ganzen
+  // Abschnitt 6, Balken mit einem Feld je Bühne. Ohne „Vorwoche … abgezogen“ – ein Team, das die
+  // Baustelle übernommen hat, kann den Stand der Vorwoche nicht kennen (Michael).
+  const KASTEN_BUEHNEN = { id: 's8', typ: 'abschnittszeile', titel: 'Hebebühnen' };
+  function buehnenStand(b) {
+    const leerSt = (text, ampel, felder) => ({ text, ampel, anteilFertig: 0, anteilTeil: 0, felder });
+    const grau = (label) => [{ label, farbe: 'o' }];
+    const h1 = statusVon(b, 'h1'), h2 = statusVon(b, 'h2'), h3 = statusVon(b, 'h3');
+    if (h1 === 'keine') return leerSt('keine Hebebühne benötigt', 'grau', grau('entfällt'));
+    if (h1 === 'nichtangeliefert') return leerSt('noch nicht angeliefert', 'grau', grau('noch nicht angeliefert'));
+    if (!BUEHNEN_DA.includes(h1) || !['0', '1', '2'].includes(h2)) return leerSt('noch nicht ausgefüllt', 'rot', grau('offen'));
+    const n = +h2;
+    if (n === 0) {
+      const vor = Math.max(1, +(((b && b.vor) || {}).h2) || 0);
+      return leerSt('alle abgeholt', 'grau', Array.from({ length: vor }, () => ({ label: 'abgeholt', farbe: 'o' })));
+    }
+    const felder = Array.from({ length: n }, (_, i) => ({ label: 'Bühne ' + (i + 1), farbe: 'f' }));
+    if (h1 === 'probleme') {
+      felder.forEach((x) => { x.farbe = 'r'; });
+      return leerSt(`Probleme beim Einbringen · ${n} vor Ort`, 'rot', felder);
+    }
+    if (n === 2 && h3 === 'nein') {
+      felder[1].farbe = 't';
+      return leerSt('2 vor Ort · 2. Bühne nicht mehr benötigt', 'gelb', felder);
+    }
+    return leerSt(`${n} vor Ort`, 'gruen', felder);
+  }
+  // Kasten-Liste: Punkte mit imKasten, am Ende die Zeile „Hebebühnen“ (nur wenn der Abschnitt da ist).
+  const kastenPunkte = () => allePunkte().filter(imKasten)
+    .concat(abschnitte().some((s) => s.id === 's8') ? [KASTEN_BUEHNEN] : []);
+
   function fortschrittStand(p, a) {
     a = a || {};
     // Spannungsversorgung (v85.8): grün nur, wenn alle Zeilen „vorhanden“ sind.
     if (p.typ === 'zeilen') {
       const z = p.zeilen.map((u) => [u, p.optionen.find((o) => o.v === bereichVon(a, u.id).status)]);
-      if (z.some(([, o]) => !o)) return { text: 'noch nicht ausgefüllt', ampel: 'rot', anteilFertig: 0, anteilTeil: 0 };
+      const felder = z.map(([u, o]) => ({ label: u.label, farbe: !o ? 'o' : o.ampel === 'gruen' ? 'f' : 'r' }));
+      if (z.some(([, o]) => !o)) return { text: 'noch nicht ausgefüllt', ampel: 'rot', anteilFertig: 0, anteilTeil: 0, felder };
       const ja = z.filter(([, o]) => o.ampel === 'gruen').length;
       const text = ja === z.length ? p.zeilen.map((u) => u.label).join(' und ') + ' vorhanden'
         : z.map(([u, o]) => `${u.label} ${o.label}`).join(' · ');
-      return { text, ampel: ja === z.length ? 'gruen' : 'rot', anteilFertig: ja / z.length, anteilTeil: 0 };
+      return { text, ampel: ja === z.length ? 'gruen' : 'rot', anteilFertig: ja / z.length, anteilTeil: 0, felder };
     }
+    if (p.typ === 'abschnittszeile') return buehnenStand(current);
     // Auswahlpunkt (Kabelzug IC, Messung, NWS, Büro …): Stand aus der gewählten Option;
     // grün füllt den Balken grün, gelb gelb, grau bleibt leer.
     if (p.typ === 'wahl') {
@@ -663,7 +696,10 @@ const Wochenbericht = (() => {
   }
 
   // Balken für den Stand eines Gewerks (App): grün = fertig, gelb = teilweise.
-  const balkenHtml = (st) => (st.stufen
+  // felder (v85.10): beschriftete Felder je Zeile/Bühne – f grün, t gelb, r rot, o grau.
+  const balkenHtml = (st) => (st.felder
+    ? `<div class="wb-fs-bar stufen">${st.felder.map((x) => `<i class="${x.farbe === 'o' ? '' : x.farbe}">${escHtml(x.label)}</i>`).join('')}</div>`
+    : st.stufen
     ? `<div class="wb-fs-bar stufen">${st.stufen.map((x) => `<i class="${x.an ? st.farbe : ''}">${escHtml(x.label)}</i>`).join('')}</div>`
     : `<div class="wb-fs-bar"><i class="f" style="width:${(st.anteilFertig * 100).toFixed(1)}%"></i>`
     + `<i class="t" style="width:${(st.anteilTeil * 100).toFixed(1)}%"></i></div>`);
@@ -740,7 +776,7 @@ const Wochenbericht = (() => {
   function renderFortschritt() {
     const box = $('#wbFortschritt');
     if (!box) return;
-    const gewerke = current && current.katalog >= 2 ? allePunkte().filter(imKasten) : [];
+    const gewerke = current && current.katalog >= 2 ? kastenPunkte() : [];
     box.hidden = !gewerke.length;
     if (!gewerke.length) { box.innerHTML = ''; return; }
     box.innerHTML = '<div class="wb-fs-titel">Baufortschritt</div>' + gewerke.map((p) => {
@@ -752,8 +788,18 @@ const Wochenbericht = (() => {
     box.querySelectorAll('.wb-fs-row').forEach((b) => {
       b.onclick = async () => {
         const pid = b.dataset.pid;
+        if (klappt) return;
+        // Zeile „Hebebühnen“: den ganzen Abschnitt öffnen (keine Unterordner).
+        if (pid === KASTEN_BUEHNEN.id) {
+          if (offen.has(pid)) { App.kopfNachOben(document.querySelector(secSel(pid))); return; }
+          offen = new Set([pid]);
+          offenSub = new Set();
+          aufgeklappt = secSel(pid);
+          await render();
+          return;
+        }
         const s = abschnitte().find((x) => x.punkte.some((q) => q.id === pid));
-        if (!s || klappt) return;
+        if (!s) return;
         // Abschnitt und Unterordner des Punkts öffnen; der Unterordner gleitet nach oben.
         if (offen.has(s.id) && offenSub.has(pid)) { App.kopfNachOben(document.querySelector(subSel(pid))); return; }
         if (offen.has(s.id)) { await klappen('.wb-sub', subSel(pid), () => { offenSub = new Set([pid]); return true; }); return; }
@@ -846,8 +892,6 @@ const Wochenbericht = (() => {
       card.querySelectorAll('.wb-seg > .vp-opt').forEach((b) => {
         b.onclick = async () => { a.status = b.dataset.val; await saveNow(); await render(`.wb-item[data-pid="${p.id}"]`); };
       });
-      const ab = abgezogen(p, a);
-      if (ab) card.insertAdjacentHTML('beforeend', `<p class="hint">${escHtml(ab)}</p>`);
       for (const g of p.gruppen.slice(0, +a.status || 0)) {
         await fotoBlock(card, p.id + '-' + g.id, `${g.label}: Bühnennummer und Standort erkennbar (Pflicht, mindestens 1)`, 1);
       }
@@ -1373,8 +1417,7 @@ const Wochenbericht = (() => {
       if (!['0', '1', '2'].includes(a.status)) return { text: 'offen', ampel: 'rot' };
       const n = +a.status;
       const text = n === 0 ? 'alle abgeholt' : n === 1 ? '1 Hebebühne vor Ort' : `${n} Hebebühnen vor Ort`;
-      const ab = abgezogen(p, a);
-      return { text: text + (ab ? ` (${ab})` : ''), ampel: n === 0 ? 'grau' : 'gruen' };
+      return { text, ampel: n === 0 ? 'grau' : 'gruen' };
     }
     if (p.typ === 'fortschritt' || p.typ === 'zeilen') {
       const st = fortschrittStand(p, a);
@@ -1398,14 +1441,6 @@ const Wochenbericht = (() => {
     return { text, ampel };
   }
 
-  // Hebebühnen: weniger als in der Vorwoche? -> „Vorwoche 2 – 1 Bühne abgezogen“ (sonst '').
-  function abgezogen(p, a) {
-    const vor = ((current && current.vor) || {})[p.id];
-    if (vor == null || a.status == null || !(+a.status < +vor)) return '';
-    const d = +vor - +a.status;
-    return `Vorwoche ${vor} – ${d} ${d === 1 ? 'Bühne' : 'Bühnen'} abgezogen`;
-  }
-
   // Ampel eines Foto-Punkts: Pflicht-Fotos erledigt = grün, sonst neutral.
   function fotoAmpel(p) {
     const a = current.antworten[p.id] || {};
@@ -1419,6 +1454,7 @@ const Wochenbericht = (() => {
   // drei schattierten Zellen (grün fertig, gelb teilweise, grau Rest). breite in Twips.
   const BALKEN_FARBEN = ['3A9D5D', 'E0A100', 'DDE2E7'];
   function balkenXml(st, breite) {
+    if (st.felder) return felderXml(st.felder, breite);
     if (st.stufen) return stufenXml(st, breite);
     const anteile = [st.anteilFertig, st.anteilTeil, Math.max(0, 1 - st.anteilFertig - st.anteilTeil)];
     const teile = anteile.map((x, i) => [Math.round(x * breite), BALKEN_FARBEN[i]]).filter(([w]) => w > 0);
@@ -1436,14 +1472,20 @@ const Wochenbericht = (() => {
       + `<w:tblGrid>${teile.map(([w]) => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>`
       + `<w:tr><w:trPr><w:trHeight w:val="220" w:hRule="exact"/></w:trPr>${zellen}</w:tr></w:tbl>` + leer(2);
   }
+  // Felder (v85.10, Spannungsversorgung und Hebebühnen): n gleich breite, beschriftete Zellen.
+  const FELD_FARBEN = { f: ['3A9D5D', 'FFFFFF'], t: ['E0A100', 'FFFFFF'], r: ['C0392B', 'FFFFFF'], o: ['DDE2E7', '5A6672'] };
+  function felderXml(felder, breite) {
+    return stufenXml({ stufen: felder.map((x) => ({ label: x.label, farben: FELD_FARBEN[x.farbe] || FELD_FARBEN.o })) }, breite);
+  }
   // NWS: drei gleich breite, beschriftete Abschnitte; erreichte gefüllt (gelb, im Serverraum grün).
   function stufenXml(st, breite) {
-    const w = Math.floor(breite / 3);
-    const breiten = [w, w, breite - 2 * w];
+    const n = st.stufen.length;                       // NWS 3, Felder (v85.10) 1–3
+    const w = Math.floor(breite / n);
+    const breiten = st.stufen.map((_, i) => (i < n - 1 ? w : breite - (n - 1) * w));
     const weiss = (s) => `<w:${s} w:val="single" w:sz="12" w:space="0" w:color="FFFFFF"/>`;
     const zellen = st.stufen.map((x, i) => {
-      const fill = x.an ? BALKEN_FARBEN[st.farbe === 'f' ? 0 : 1] : BALKEN_FARBEN[2];
-      const farbe = x.an ? 'FFFFFF' : '5A6672';
+      const fill = x.farben ? x.farben[0] : x.an ? BALKEN_FARBEN[st.farbe === 'f' ? 0 : 1] : BALKEN_FARBEN[2];
+      const farbe = x.farben ? x.farben[1] : x.an ? 'FFFFFF' : '5A6672';
       return `<w:tc><w:tcPr><w:tcW w:w="${breiten[i]}" w:type="dxa"/><w:tcBorders>${weiss('left')}${weiss('right')}</w:tcBorders>`
         + `<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/><w:vAlign w:val="center"/></w:tcPr>`
         + '<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/></w:pPr>'
@@ -1490,6 +1532,9 @@ const Wochenbericht = (() => {
     ABS.forEach((s, i) => s.punkte.forEach((p, k) => {
       if (imKasten(p)) gewerke.push({ p, nr: `${i + 1}.${k + 1}`, anker: `P${i + 1}_${k + 1}` });
     }));
+    // v85.10: am Ende eine Zeile „6. Hebebühnen“ für den ganzen Abschnitt; Klick springt zu A6.
+    const iBuehnen = ABS.findIndex((s) => s.id === KASTEN_BUEHNEN.id);
+    if (gewerke.length && iBuehnen >= 0) gewerke.push({ p: KASTEN_BUEHNEN, nr: `${iBuehnen + 1}.`, anker: `A${iBuehnen + 1}` });
     if (gewerke.length) {
       doc.push(Docx.pBar('Baufortschritt', BLAU));
       const WF = [3200, 3238, 3200];

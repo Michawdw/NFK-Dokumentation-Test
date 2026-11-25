@@ -1185,6 +1185,7 @@ textarea.wb-notiztext { min-height: 4.125rem; }
 .wb-fs-bar.stufen i:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
 .wb-fs-bar.stufen i.f { background: var(--accent); color: var(--on-status); }
 .wb-fs-bar.stufen i.t { background: var(--progress); color: var(--on-status); }
+.wb-fs-bar.stufen i.r { background: var(--danger); color: var(--on-solid); }   /* v85.10: Spannung fehlt, Probleme Hebebühnen */
 .wb-fs-mini { margin-top: var(--sp-2h); font-size: var(--fs-13); font-weight: 500; color: var(--text-muted); }
 .wb-fs-mini .wb-fs-bar { margin-top: var(--sp-1); }
 .wb-bereiche { margin-top: var(--sp-3); }
