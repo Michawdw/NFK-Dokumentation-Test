@@ -184,7 +184,7 @@ const ExportZip = (() => {
     for (const s of [...Wochenbericht.ABSCHNITTE_V1, ...Wochenbericht.ABSCHNITTE]) {
       for (const p of s.punkte) {
         titel.set(p.id, p.titel);
-        for (const g of (p.gruppen || [])) titel.set(p.id + '-' + g.id, 'Fortschritt ' + g.label);
+        for (const g of (p.gruppen || [])) titel.set(p.id + '-' + g.id, (p.typ === 'buehnen' ? '' : 'Fortschritt ') + g.label);
       }
     }
     const fotos = allePhotos
