@@ -1667,10 +1667,15 @@ const Wochenbericht = (() => {
           const at = antwortText(p);
           status = AMPEL[at.ampel] || AMPEL.grau;
           text(at.text, { bold: true, color: status.color, after: 60 });
+          // v85.11: alle Bühnenfotos in EINE Liste – zwei Hochkant-Fotos stehen dann nebeneinander
+          // (Docx.card), und Abschnitt 6 passt auf eine Seite. Die Bühne steht in der Bildunterschrift.
+          const alle = [];
           for (const g of p.gruppen.slice(0, +a.status || 0)) {
-            text(g.label, { bold: true, sz: 20, before: 60, after: 40 });
-            fotos(await fotoItems(p.id + '-' + g.id));
+            for (const it of await fotoItems(p.id + '-' + g.id)) {
+              alle.push({ ...it, caption: g.label + (voll(it.caption) ? ' – ' + it.caption.trim() : '') });
+            }
           }
+          fotos(alle);
         } else if (p.typ === 'frei') {
           status = AMPEL[antwortText(p).ampel] || AMPEL.grau;
           if (a.nichts) text(p.nichts, { color: '5A6672', after: 60 });
