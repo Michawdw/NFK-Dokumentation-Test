@@ -334,12 +334,16 @@ const Wochenbericht = (() => {
   // Fortschritt aus dem letzten älteren Bericht (katalog 2) übernehmen. Teilweise fertige
   // Unterpunkte muss der Techniker bestätigen („unverändert“) oder ändern; alles andere gilt
   // gleich als beantwortet. Fotos werden nicht übernommen.
-  function vorbelegen(job, b) {
+  // nurNeue (v85.9): beim Umstellen eines offenen Berichts auf katalog 3 nur die neuen Punkte
+  // (ab: 3) vorbelegen, die noch keine Antwort haben – alles andere bleibt, wie es ist.
+  function vorbelegen(job, b, nurNeue) {
     const vorher = liste(job).filter((x) => x.katalog >= 2 && x.kw < b.kw)
       .sort((x, y) => (x.kw < y.kw ? 1 : -1))[0];
     if (!vorher) return;
     const leereAntwort = (status) => ({ status, text: '', notiz: '', nichts: false, unter: { status: null, text: '' } });
-    for (const p of ABSCHNITTE.flatMap((s) => s.punkte)) {
+    const neuePunkte = HEBEBUEHNEN.punkte.concat([SPANNUNG]);
+    for (const p of nurNeue ? neuePunkte : ABSCHNITTE.flatMap((s) => s.punkte)) {
+      if (nurNeue && b.antworten[p.id]) continue;
       const alt = vorher.antworten[p.id];
       // v85.8: „bereits erledigt“ / „keine benötigt“ (Hebebühnen), Spannung „vorhanden“, Anzahl Bühnen.
       if (p.vorbelegen && alt && alt.status) {
@@ -1725,12 +1729,29 @@ const Wochenbericht = (() => {
     return geaendert;
   }
 
+  // v85.9: Berichte mit katalog 2, aus denen noch kein Word-Bericht erstellt wurde, bekommen die
+  // neuen Punkte (Spannungsversorgung, Hebebühnen) dazu – sonst fehlten sie im Bericht der laufenden
+  // Woche, der schon vor dem Update begonnen war. Bisherige Antworten bleiben, die Punkte sind
+  // gleich geblieben (katalog 3 = katalog 2 + neue Punkte). Verschickte Berichte bleiben, wie sie sind.
+  function aufKatalog3(job) {
+    let geaendert = false;
+    for (const b of liste(job)) {
+      if (b.katalog !== 2 || b.exportiertAm) continue;
+      b.katalog = 3;
+      if (!b.antworten) b.antworten = {};
+      if (!b.vor) b.vor = {};
+      vorbelegen(job, b, true);
+      geaendert = true;
+    }
+    return geaendert;
+  }
+
   // ------------------------------------------------------------- Einstieg
   async function enter() {
     const job = App.getCurrentJob();
     if (!job) return;
     try { await altFotosUmziehen(job); } catch (e) { console.warn('Fotos „Serverschränke" umziehen fehlgeschlagen', e); }
-    if (jaNeinUmstellen(job)) await App.saveCurrentJob();
+    if (jaNeinUmstellen(job) | aufKatalog3(job)) await App.saveCurrentJob();
     // Rückkehr aus einem anderen Bereich: den zuletzt geöffneten Bericht weiterzeigen.
     // Nach einem Auftragswechsel hat reset() ihn verworfen – dann die aktuelle KW.
     if (current) { await zaehleFotos(); await render(); return; }
